@@ -5,39 +5,54 @@
 namespace A {
 int A::CompoundStm::MaxArgs() const {
   // TODO: put your code here (lab1).
-
+  return std::max(stm1->MaxArgs(),stm2->MaxArgs());
 }
 
 Table *A::CompoundStm::Interp(Table *t) const {
   // TODO: put your code here (lab1).
+  t = stm1->Interp(t);
+  t = stm2->Interp(t);
+  return t;
 }
 
 int A::AssignStm::MaxArgs() const {
   // TODO: put your code here (lab1).
-
+  // printf("%d",exp->MaxArgs());
+  return exp->MaxArgs();//赋值只要管右半部分
 }
 
 Table *A::AssignStm::Interp(Table *t) const {
   // TODO: put your code here (lab1).
-
+  IntAndTable* tmp = exp->InterpExp(t);
+  int num = tmp->i;
+  Table* newt = tmp->t;
+  // // printf("%d",num);
+  newt = newt->Update(id,num);
+  // int a = t->Lookup("a");
+  // printf("%d",a);
+  return newt;//传递正常
 }
 
 int A::PrintStm::MaxArgs() const {
   // TODO: put your code here (lab1).
-
+  return std::max(exps->NumExps(),exps->MaxArgs());
 }
 
 Table *A::PrintStm::Interp(Table *t) const {
   // TODO: put your code here (lab1).
-  
+  Table* tmpt = (exps->Interp(t))->t;
+  return tmpt;//这一步的interp没有记录下之前的table
 }
+
+
+
 
 int IdExp::MaxArgs() const {
   return 0; // should be 0 for none print stm testcase
 }
 
 IntAndTable *IdExp::InterpExp(Table *t) const {
-  return new IntAndTable(t->Lookup(id), t);
+  return new IntAndTable(t->Lookup(id), t);//找到id对应的int值
 }
 
 int NumExp::MaxArgs() const {
@@ -45,7 +60,7 @@ int NumExp::MaxArgs() const {
 }
 
 IntAndTable *NumExp::InterpExp(Table *t) const {
-  return new IntAndTable(num, t);
+  return new IntAndTable(num, t);//值和对应的没有更新的t
 }
 
 int OpExp::MaxArgs() const {
@@ -86,7 +101,7 @@ IntAndTable *EseqExp::InterpExp(Table *t) const {
 int PairExpList::MaxArgs() const {
   int num1 = exp->MaxArgs();
   int num2 = tail->MaxArgs();
-  return num1 > num2 ? num1 : num2;
+  return num1 > num2 ? num1 : num2;//exp里面才会有print 找到两个里面更大就行
 }
 
 int PairExpList::NumExps() const { return 1 + tail->NumExps(); }

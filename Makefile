@@ -3,6 +3,9 @@
 docker-build:
 	docker build -t cs-ttb/tigerlabs_env .
 
+transform:
+	find src scripts testdata -type f | xargs -I % sh -c 'dos2unix -n % /tmp/tmp; mv -f /tmp/tmp % || true;'
+
 docker-pull:
 	docker pull yuexizou/tiger-compiler-env:new
 
@@ -20,25 +23,25 @@ build:
 build-debug:
 	mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Debug .. && make
 
-gradelab1:
+gradelab1:transform
 	bash scripts/grade.sh lab1
 
-gradelab2:
+gradelab2:transform
 	bash scripts/grade.sh lab2
 
-gradelab3:
+gradelab3:transform
 	bash scripts/grade.sh lab3
 
-gradelab4:
+gradelab4:transform
 	bash scripts/grade.sh lab4
 
-gradelab5:
+gradelab5:transform
 	bash scripts/grade.sh lab5
 
-gradelab6:
+gradelab6:transform
 	bash scripts/grade.sh lab6
 
-gradeall:
+gradeall:transform
 	bash scripts/grade.sh all
 
 ziplab1:
