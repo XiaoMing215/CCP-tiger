@@ -10,8 +10,12 @@
 #include "tiger/errormsg/errormsg.h"
 #include "tiger/parse/parserbase.h"
 
+
 class Scanner : public ScannerBase {
 public:
+
+  std::string string_buf;
+
   Scanner() = delete;
   explicit Scanner(std::string_view fname, std::ostream &out = std::cout)
       : ScannerBase(std::cin, out), comment_level_(1), char_pos_(1),

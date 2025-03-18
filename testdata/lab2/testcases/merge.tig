@@ -53,4 +53,4 @@ function readint(any: any) : int =
   /* BODY OF MAIN PROGRAM */
  in printlist(merge(list1,list2))
 end
-
+/* BODY OF MAIN PROGRAM /* BODY OF MAIN PROGRAM */ var  */

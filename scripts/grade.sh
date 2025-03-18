@@ -44,8 +44,25 @@ test_lab2() {
   local ref_dir=${WORKDIR}/testdata/lab2/refs
   local testcase_name
 
+  local testcase=${WORKDIR}/testdata/lab2/testcases/test52.tig
+
+  # build test_lex
+  # echo $testcase
+  # testcase_name=$(basename "$testcase" | cut -f1 -d".")
+  # local ref=${ref_dir}/${testcase_name}.out
+  # sed -i 's/\r$//' "$testcase"
+  # sed -i 's/\r$//' "${ref}"
+  # ./test_lex "$testcase" >&/tmp/output.txt
+  # diff /tmp/output.txt "${ref}"
+  # if [[ $? != 0 ]]; then
+  #   echo "Error: Output mismatch"
+  #   echo "${score_str}: 0"
+  #   exit 1
+  # fi
+
   build test_lex
   for testcase in "$testcase_dir"/*.tig; do
+    echo $testcase
     testcase_name=$(basename "$testcase" | cut -f1 -d".")
     local ref=${ref_dir}/${testcase_name}.out
     sed -i 's/\r$//' "$testcase"
