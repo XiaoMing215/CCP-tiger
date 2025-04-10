@@ -91,13 +91,13 @@ program:  exp  {absyn_tree_ = std::make_unique<absyn::AbsynTree>($1);};
 /*lets go!*/
 
 decs:
-  decs_nonempty { $$ = $1;}
+  decs_nonempty_s decs {if($2)$$=$2->Prepend($1);else $$ = new absyn::DecList($1);}
 | //empty
 ;
 //decs_nonempty_s 是Dec类型的 才能符合Declist的append
 
 decs_nonempty:
-| decs_nonempty_s decs {if($2) $$ = $2->Prepend($1); else $$ = new absyn::DecList($1);}
+  decs_nonempty_s decs {if($2) $$ = $2->Prepend($1); else $$ = new absyn::DecList($1);}
 ;
 
 decs_nonempty_s:
@@ -112,6 +112,7 @@ decs_nonempty_s:
 tydec:
   tydec_one {$$ = new absyn::NameAndTyList($1);} //不能直接使用$$ = $1 因为返回类型不同
 | tydec_one tydec {if($2) $$=$2->Prepend($1);else $$ = new absyn::NameAndTyList($1);}
+|  //empty
 ;
 //tydec 是 tydeclist类型的 这才有append
 //$$也是tydeclist类型的 返回的是NameAndTyList类
@@ -124,7 +125,7 @@ tydec_one:
 
 ty:
   ID {$$ = new absyn::NameTy(scanner_.GetTokPos(),$1);}
-| LBRACE tyfields RBRACE {$$ = new absyn::RecordTy(scanner_.GetTokPos(),$2);}
+| LBRACE tyfields_nonempty RBRACE {$$ = new absyn::RecordTy(scanner_.GetTokPos(),$2);}
 | ARRAY OF ID {$$ = new absyn::ArrayTy(scanner_.GetTokPos(),$3);}
 ;
 
@@ -132,17 +133,17 @@ ty:
 
 tyfields:
   {$$ = new absyn::FieldList();} //empty
-| tyfields_nonempty {$$ = $1;}
+| tyfield {$$ = new absyn::FieldList($1);}
+| tyfield COMMA tyfields {$$=$3->Prepend($1);}
 ;
 
 tyfields_nonempty:
-| tyfield COMMA tyfields_nonempty {$$ = $3->Prepend($1);}
+  tyfield COMMA tyfields {$$ = $3->Prepend($1);}
 | tyfield {$$ = new absyn::FieldList($1);}
 ;
 //Fieldlist双大写
 
 //有:的需要保证前面不空
-
 tyfield:
   ID COLON ID {$$ = new absyn::Field(scanner_.GetTokPos(),$1,$3);}
 ;
@@ -155,6 +156,7 @@ vardec:
 
 fundec: //不会为空！他在decs_nonempty_s下
  fundec_one fundec {if($2) $$ = $2->Prepend($1); else $$ = new absyn::FunDecList($1);}
+| //empty
 ;
 
 fundec_one:
@@ -191,6 +193,7 @@ exp:
   | LET decs_nonempty IN sequencing_exps END { $$ = new absyn::LetExp(scanner_.GetTokPos(),$2,new absyn::SeqExp(scanner_.GetTokPos(),$4)); } 
   | LPAREN exp RPAREN {$$ = $2;} //外包括号
   | one {$$ = new absyn::VarExp(scanner_.GetTokPos(),$1);}
+  | {$$ = new absyn::VoidExp(scanner_.GetTokPos());}//empty
   | one OF exp {auto scriptvar = static_cast<absyn::SubscriptVar*>($1);
     auto simplevar = static_cast<absyn::SimpleVar*>(scriptvar->var_);
     $$ = new absyn::ArrayExp(scanner_.GetTokPos(),simplevar->sym_,scriptvar->subscript_,$3);}
