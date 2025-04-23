@@ -1,2 +1,6 @@
+<<<<<<< HEAD
 ./testdata/lab4/testcases/test35.tig:5.4:too many params in function g
 ./testdata/lab4/testcases/test35.tig:5.8:para type mismatch
+=======
+test35.tig:5.8:para type mismatch
+>>>>>>> lab3

@@ -1,2 +1,1 @@
-./testdata/lab4/testcases/test22.tig:7.7: field nam doesn't exist
-./testdata/lab4/testcases/test22.tig:7.7: unmatched assign exp
+test22.tig:7.7:field nam doesn't exist

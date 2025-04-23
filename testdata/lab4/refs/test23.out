@@ -1,2 +1,2 @@
-./testdata/lab4/testcases/test23.tig:7.16:unmatched assign exp
-./testdata/lab4/testcases/test23.tig:9.1:unmatched assign exp
+test23.tig:7.16:unmatched assign exp
+test23.tig:9.1:unmatched assign exp

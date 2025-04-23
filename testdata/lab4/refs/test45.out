@@ -1,1 +1,1 @@
-./testdata/lab4/testcases/test45.tig:6.1:init should not be nil without type specified
+test45.tig:6.1:init should not be nil without type specified
