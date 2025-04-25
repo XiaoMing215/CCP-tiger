@@ -45,22 +45,23 @@ ziplab1:
 	zip -j lab1-answer.zip src/straightline/slp.*
 
 ziplab2:
-	zip -j lab2-answer.zip src/tiger/lex/tiger.lex src/tiger/lex/scanner.h
+	zip -j lab2-answer.zip \
+	src/tiger/lex/tiger.lex \
+	src/tiger/lex/scanner.h
 
 ziplab3:
-	zip -j lab3-answer.zip src/tiger/parse/tiger.y
+	zip -j lab3-answer.zip \
+	src/tiger/parse/tiger.y \
+	src/tiger/lex/tiger.lex \
+	src/tiger/lex/scanner.h
 
 ziplab4:
-	zip -j lab4-answer.zip src/tiger/semant/semant.cc
-
-ziplab5-1:
-	zip -r lab5-1_answer.zip src/
-
-ziplab5-2:
-	zip -r lab5-2_answer.zip src/tiger/frame/* src/tiger/translate/* src/tiger/runtime/* src/tiger/env/* src/tiger/escape/*
-
-ziplab6:
-	zip -r lab6_answer.zip src/
+	zip -j lab4-answer.zip \
+    src/tiger/parse/tiger.y \
+    src/tiger/lex/tiger.lex \
+    src/tiger/lex/scanner.h \
+    src/tiger/semant/semant.h \
+    src/tiger/semant/semant.cc
 
 zipclean:
 	rm -rf *.zip
@@ -74,4 +75,3 @@ register:
 
 format:
 	find . \( -name "*.h" -o -iname "*.cc" \) | xargs clang-format -i -style=file
-
