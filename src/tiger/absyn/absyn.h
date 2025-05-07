@@ -35,6 +35,8 @@ class DecList;
 class EFieldList;
 
 enum Oper {
+  AND_OP,
+  OR_OP,
   PLUS_OP,
   MINUS_OP,
   TIMES_OP,

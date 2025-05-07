@@ -176,9 +176,11 @@ one:
   ID LBRACK exp RBRACK {$$ = new absyn::SubscriptVar(scanner_.GetTokPos(), new absyn::SimpleVar(scanner_.GetTokPos(), $1),$3);}
 ;
 
-exp:
+exp://lab5-1新增三个：和minus exp
     lvalue {$$ = new absyn::VarExp(scanner_.GetTokPos(),$1);}                    
-  | NIL {$$ = new absyn::NilExp(scanner_.GetTokPos());}                       
+  | NIL {$$ = new absyn::NilExp(scanner_.GetTokPos());} 
+  | MINUS exp {$$ = new absyn::OpExp(scanner_.GetTokPos(),absyn::MINUS_OP,new absyn::IntExp(scanner_.GetTokPos(),0),$2); }                      
+  | exp AND exp {$$ = new absyn::OpExp(scanner_.GetTokPos(),absyn::AND_OP,$1,$3);}
   | INT { $$ = new absyn::IntExp(scanner_.GetTokPos(),$1); }                        
   | STRING { $$ = new absyn::StringExp(scanner_.GetTokPos(),$1); }                     
   | callexp {$$ = $1;}

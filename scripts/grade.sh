@@ -142,6 +142,9 @@ test_lab5_part1() {
   build test_translate
   for testcase in "$testcase_dir"/*.tig; do
     testcase_name=$(basename "$testcase" | cut -f1 -d".")
+
+    echo "[INFO] Running testcase: $testcase_name" #调试用
+
     local ref=${ref_dir}/${testcase_name}.out
 
     ./test_translate "$testcase" >&/tmp/output.txt
