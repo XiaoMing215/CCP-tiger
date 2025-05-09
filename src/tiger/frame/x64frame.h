@@ -4,6 +4,7 @@
 #include "tiger/frame/frame.h"
 
 namespace frame {
+
 class X64RegManager : public RegManager {
 public:
   enum Reg : unsigned long {
@@ -50,6 +51,7 @@ public:
   [[nodiscard]] temp::Temp *ReturnValue() override;
   
 };
+//这一块对应cc文件的第一大段 不用我们修改 是寄存器分配相关的
 
 } // namespace frame
 #endif // TIGER_COMPILER_X64FRAME_H
