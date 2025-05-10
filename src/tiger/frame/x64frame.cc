@@ -4,6 +4,14 @@ extern frame::RegManager *reg_manager;
 
 namespace frame {
 
+tree::Exp *ExternalCall(std::string s, tree::ExpList *args) {
+  // Prepend a magic exp at first arg, indicating do not pass static link on
+  // stack
+  args->Insert(new tree::NameExp(temp::LabelFactory::NamedLabel("staticLink")));
+  return new tree::CallExp(new tree::NameExp(temp::LabelFactory::NamedLabel(s)),
+                           args);
+}
+
 X64RegManager::X64RegManager() : RegManager() {
   for (int i = 0; i < REG_COUNT; i++)
     regs_.push_back(temp::TempFactory::NewTemp());
@@ -148,14 +156,6 @@ frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
   }
   return frame;
 }//对吗？
-
-tree::Exp *ExternalCall(std::string_view s, tree::ExpList *args) {
-  // Prepend a magic exp at first arg, indicating do not pass static link on
-  // stack
-  args->Insert(new tree::NameExp(temp::LabelFactory::NamedLabel("staticLink")));
-  return new tree::CallExp(new tree::NameExp(temp::LabelFactory::NamedLabel(s)),
-                           args);
-}
 
 /**
  * Moving incoming formal parameters, the saving and restoring of callee-save

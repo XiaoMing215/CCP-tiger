@@ -395,7 +395,7 @@ tr::ExpAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     call_exp = new tree::CallExp(new tree::NameExp(func_label),arg_list);
   }else{//env.cc externalcall label=nullptr
     //new NamedLabel
-    call_exp = frame::externalCall(func_->Name(),arg_list);
+    call_exp = frame::ExternalCall(func_->Name(),arg_list);
   }
   auto res_ty = func_entry->result_;
   return new tr::ExpAndTy(
@@ -470,7 +470,7 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     if(op != tree::REL_OPER_COUNT){
       tree::CjumpStm* cj = nullptr;
       if(left_exp_ty->ty_->IsSameType(type::StringTy::Instance())){
-        auto str_cmp = frame::externalCall("string_equal",new tree::ExpList({left_exp_ty->exp_->UnEx(),right_exp_ty->exp_->UnEx()}));
+        auto str_cmp = frame::ExternalCall("string_equal",new tree::ExpList({left_exp_ty->exp_->UnEx(),right_exp_ty->exp_->UnEx()}));
         //1 eq  0 neq  order does not matter
         cj = new tree::CjumpStm(op,str_cmp,new tree::ConstExp(1),nullptr,nullptr);
       }else{
@@ -536,7 +536,7 @@ tr::ExpAndTy *RecordExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto field_list = ty->fields_->GetList();
   auto wordsize = reg_manager->WordSize();
   auto record_len = field_list.size();
-  auto alloc_record = frame::externalCall("alloc_record",new tree::ExpList({new tree::ConstExp(record_len*wordsize)}));
+  auto alloc_record = frame::ExternalCall("alloc_record",new tree::ExpList({new tree::ConstExp(record_len*wordsize)}));
 
   auto r = temp::TempFactory::NewTemp();
   auto move_addr_to_r = new tree::MoveStm(
@@ -829,7 +829,7 @@ tr::ExpAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto ty = static_cast<type::ArrayTy*>(tenv->Look(typ_));
   auto size_exp_ty = size_->Translate(venv,tenv,level,label,errormsg);
   auto init_exp_ty = init_->Translate(venv,tenv,level,label,errormsg);
-  auto init_array = frame::externalCall("init_array",new tree::ExpList({size_exp_ty->exp_->UnEx(),init_exp_ty->exp_->UnEx()}));
+  auto init_array = frame::ExternalCall("init_array",new tree::ExpList({size_exp_ty->exp_->UnEx(),init_exp_ty->exp_->UnEx()}));
 
   //externalcall already mov init value
   return new tr::ExpAndTy(

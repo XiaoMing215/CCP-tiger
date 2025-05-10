@@ -62,7 +62,6 @@ public:
   tree::Exp *ToExp(tree::Exp *frame_ptr) const override;
 };
 
-tree::Exp *externalCall(std::string s,tree::ExpList *args);
 
 } // namespace frame
 #endif // TIGER_COMPILER_X64FRAME_H

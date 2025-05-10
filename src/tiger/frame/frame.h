@@ -160,7 +160,7 @@ tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm);
 
 Frame *NewFrame(temp::Label *name, std::list<bool> formals);
 
-tree::Exp *externalCall(std::string s,tree::ExpList *args);
+tree::Exp *ExternalCall(std::string s,tree::ExpList *args);
 } // namespace frame
 
 #endif
