@@ -19,7 +19,14 @@ namespace tr {
 
 Access *Access::AllocLocal(Level *level, bool escape) {
   /* TODO: Put your lab5 code here */
+  // 1. 从 level 中拿到底层的 frame
+  frame::Frame *f = level->frame_;
 
+  // 2. 调用 frame 的 AllocLocal 分配一个局部变量的存储空间（栈上或寄存器）
+  frame::Access *frame_access = f->AllocLocal(escape);
+
+  // 3. 用 tr::Access 封装 frame_access 和 level
+  return new Access(level, frame_access);
 }
 
 class Cx {
