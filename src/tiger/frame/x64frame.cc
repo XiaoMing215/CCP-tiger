@@ -74,19 +74,14 @@ temp::Temp *X64RegManager::ReturnValue() { return regs_[RV]; }
 //以上是x86frame.h当中的定义实现 不用管
 
 //escape = true
-class InFrameAccess : public Access {
-public:
-  int offset;
+//定义部分在.h文件当中
+InFrameAccess::InFrameAccess(int offset) : offset(offset) {}
 
-  explicit InFrameAccess(int offset) : offset(offset) {}
-  /* TODO: Put your lab5 code here */
-  tree::Exp *ToExp(tree::Exp *frame_ptr) const override {
-    //把「相对于帧指针的偏移」变成 IR 树里的表达式。
-    //构造Mem(Binop(PLUS, frame_ptr, Const(offset)))
-    return new tree::MemExp(new tree::BinopExp(tree::BinOp::PLUS_OP, frame_ptr, new tree::ConstExp(offset)));
-  }
-  /* End for lab5 code */
-};
+tree::Exp *InFrameAccess::ToExp(tree::Exp *frame_ptr) const {
+  return new tree::MemExp(
+    new tree::BinopExp(tree::PLUS_OP, frame_ptr, new tree::ConstExp(offset))
+  );
+}
 
 //escape = false
 class InRegAccess : public Access {
@@ -104,7 +99,6 @@ public:
   /* End for lab5 code */
 };
 //以上是access类的实现
-
 
 class X64Frame : public Frame {
   /* TODO: Put your lab5 code here */

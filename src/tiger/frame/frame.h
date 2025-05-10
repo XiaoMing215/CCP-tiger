@@ -94,13 +94,13 @@ class Frame {
 
     virtual std::list<Access *> *Formals() { return formals_; }
 
-    // virtual temp::Temp *StackPointer() = 0;
-    // virtual temp::Temp *FramePointer() = 0;
-    // virtual temp::Temp *ReturnValue() = 0;
-    //这三个x86frame没有要求实现
     virtual int WordSize() { return word_size_; }
     virtual int TotalSize() { return total_size_; }
 
+    //translate处需要的函数
+    frame::Access *StaticLink(){return formals_->front();}  
+    [[nodiscard]] const std::list<frame::Access *> &GetFormalList() const { return *formals_; }
+    [[nodiscard]] const std::list<tree::Stm*> &GetVSList() const { return view_shift_stm; }
   protected:
     int word_size_;
     int offset_;
@@ -108,6 +108,7 @@ class Frame {
     temp::Label *name_;
     std::list<Access *> *formals_;
     std::vector<Access *> locals_; // 需要使用unique_ptr，保持性质一致
+    std::list<tree::Stm*> view_shift_stm;
     int total_size_;
     int local_count_;
 };
@@ -152,8 +153,6 @@ private:
 };
 
 /* TODO: Put your lab5 code here */
-tree::Exp *externalCall(std::string s,tree::ExpList *args);
-
 
 tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm);
 // x64frame当中的函数
@@ -161,6 +160,7 @@ tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm);
 
 Frame *NewFrame(temp::Label *name, std::list<bool> formals);
 
+tree::Exp *externalCall(std::string s,tree::ExpList *args);
 } // namespace frame
 
 #endif

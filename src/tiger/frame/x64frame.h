@@ -53,5 +53,16 @@ public:
 };
 //这一块对应cc文件的第一大段 不用我们修改 是寄存器分配相关的
 
+//由于translate要用到inframeaccess 这里要申明：
+class InFrameAccess : public Access {
+public:
+  int offset;
+
+  explicit InFrameAccess(int offset);
+  tree::Exp *ToExp(tree::Exp *frame_ptr) const override;
+};
+
+tree::Exp *externalCall(std::string s,tree::ExpList *args);
+
 } // namespace frame
 #endif // TIGER_COMPILER_X64FRAME_H
