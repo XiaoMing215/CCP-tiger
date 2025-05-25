@@ -111,58 +111,58 @@ tree::Exp *InFrameAccess::ToExp(tree::Exp *frame_ptr) const {
 }
 
 //escape = false
-class InRegAccess : public Access {
-public:
-  temp::Temp *reg;
-  //Temp 对象只是一个“逻辑寄存器”占位符，
+// class InRegAccess : public Access {
+// public:
+//   temp::Temp *reg;
+//   //Temp 对象只是一个“逻辑寄存器”占位符，
 
-  explicit InRegAccess(temp::Temp *reg) : reg(reg) {}
-  /* TODO: Put your lab5 code here */
-  tree::Exp *ToExp(tree::Exp *framePtr) const override {
-    //这个变量是保存在寄存器里的，所以访问它的表达式就是直接返回对应的 Temp 表达式即可。
-    return new tree::TempExp(reg);
-    //传入的参数并没有用 但是为了frame当中抽象定义所以传入了
-  } 
-  /* End for lab5 code */
-};
+//   explicit InRegAccess(temp::Temp *reg) : reg(reg) {}
+//   /* TODO: Put your lab5 code here */
+//   tree::Exp *ToExp(tree::Exp *framePtr) const override {
+//     //这个变量是保存在寄存器里的，所以访问它的表达式就是直接返回对应的 Temp 表达式即可。
+//     return new tree::TempExp(reg);
+//     //传入的参数并没有用 但是为了frame当中抽象定义所以传入了
+//   } 
+//   /* End for lab5 code */
+// };
 //以上是access类的实现
 
-class X64Frame : public Frame {
-  /* TODO: Put your lab5 code here */
-public:
-  tree::Stm *view_shift;
+// class X64Frame : public Frame {
+//   /* TODO: Put your lab5 code here */
+// public:
+//   tree::Stm *view_shift;
 
-  X64Frame(temp::Label *name, std::list<frame::Access *> *formals)
-      : Frame(8, 0, name, formals), view_shift(nullptr) {}
+//   X64Frame(temp::Label *name, std::list<frame::Access *> *formals)
+//       : Frame(8, 0, name, formals), view_shift(nullptr) {}
 
-  [[nodiscard]] std::string GetLabel() const override { return name_->Name(); }
-  [[nodiscard]] temp::Label *Name() const override { return name_; }
-  [[nodiscard]] std::list<frame::Access *> *Formals() const override {
-    return formals_;
-  }
-  frame::Access *AllocLocal(bool escape) override {
-    /* TODO: Put your lab5 code here */
-    // 根据变量是否逃逸，分配对应的局部变量（寄存器或栈上）。
-    if (escape) {
-        // 从栈上分配，按 8 字节对齐
-        offset_ -= 8;
-        return new InFrameAccess(offset_);
-      } else {
-        // 从寄存器分配
-        return new InRegAccess(temp::TempFactory::NewTemp());
-    }
-  }
-  void AllocOutgoSpace(int size) override {
-    /* TODO: Put your lab5 code here */
-    //记录该函数调用其它函数时，需要为“传出参数”分配的最大栈空间。
-    if (size > out_args_) {
-      out_args_ = size;
-      //更新帧的信息
-    }
-  }
-  /* End for lab5 code */
-};
-
+//   [[nodiscard]] std::string GetLabel() const override { return name_->Name(); }
+//   [[nodiscard]] temp::Label *Name() const override { return name_; }
+//   [[nodiscard]] std::list<frame::Access *> *Formals() const override {
+//     return formals_;
+//   }
+//   frame::Access *AllocLocal(bool escape) override {
+//     /* TODO: Put your lab5 code here */
+//     // 根据变量是否逃逸，分配对应的局部变量（寄存器或栈上）。
+//     if (escape) {
+//         // 从栈上分配，按 8 字节对齐
+//         offset_ -= 8;
+//         return new InFrameAccess(offset_);
+//       } else {
+//         // 从寄存器分配
+//         return new InRegAccess(temp::TempFactory::NewTemp());
+//     }
+//   }
+//   void AllocOutgoSpace(int size) override {
+//     /* TODO: Put your lab5 code here */
+//     //记录该函数调用其它函数时，需要为“传出参数”分配的最大栈空间。
+//     if (size > out_args_) {
+//       out_args_ = size;
+//       //更新帧的信息
+//     }
+//   }
+//   /* End for lab5 code */
+// };
+// 在frame当中定义即可
 /* TODO: Put your lab5 code here */
 
 ///////////////////////////////////////////////////////////////////////////

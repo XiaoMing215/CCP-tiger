@@ -7,7 +7,7 @@ namespace frame {
 
 class X64RegManager : public RegManager {
 public:
-  enum Reg : unsigned long {
+  enum X64Reg {
     RAX,
     RBX,
     RCX,
@@ -29,7 +29,13 @@ public:
     SP = RSP, // use RSP as SP
     RV = RAX, // use RAX as RV
   };
-
+  
+  //用于x64frame.cc
+  const std::string X64RegNames[16] = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
+                                      "rsp", "rbp", "r8",  "r9",  "r10", "r11",
+                                      "r12", "r13", "r14", "r15"};
+  const int WORD_SIZE = 8;
+  //用于x64frame.cc
   X64RegManager();
 
   [[nodiscard]] temp::TempList *Registers() override;
@@ -62,6 +68,23 @@ public:
   tree::Exp *ToExp(tree::Exp *frame_ptr) const override;
 };
 
+//这个新增的意义？
+// visiting var in reg
+class InRegAccess : public Access {
+public:
+  temp::Temp *reg; // Temp is a data structure represents virtual registers
+  explicit InRegAccess(temp::Temp *reg) : reg(reg) {}
+  /* TODO: Put your lab5 code here */
+  tree::Exp *ToExp(tree::Exp *framePtr) const override;
+};
+
+class X64Frame : public Frame {
+  /* TODO: Put your lab5 code here */
+public:
+  X64Frame(temp::Label *name, std::list<bool> formals);
+  int AllocLocal();
+  std::list<frame::Access *> *Formals();
+};
 
 } // namespace frame
 #endif // TIGER_COMPILER_X64FRAME_H
