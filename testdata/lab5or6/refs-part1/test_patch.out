@@ -2,7 +2,7 @@
   decList(
    functionDec(
     fundecList(
-     fundec(g,
+     fundec(patchtest,
       fieldList(
        field(a,
         int,
@@ -38,16 +38,18 @@
               fieldList())))))))),
       int,
       iffExp(
-       iffExp(
-        iffExp(
+       opExp(
+        OR,
+        opExp(
+         OR,
          opExp(
           GREAT,
           varExp(
            simpleVar(a)),
           varExp(
            simpleVar(b))),
-         intExp(1),
-         iffExp(
+         opExp(
+          AND,
           opExp(
            LESSTHAN,
            varExp(
@@ -59,9 +61,7 @@
            varExp(
             simpleVar(e)),
            varExp(
-            simpleVar(f))),
-          intExp(0))),
-        intExp(1),
+            simpleVar(f))))),
         opExp(
          NOTEQUAL,
          varExp(
@@ -104,7 +104,7 @@
      expList(
       callExp(printi,
        expList(
-        callExp(g,
+        callExp(patchtest,
          expList(
           intExp(9),
           expList(
@@ -132,7 +132,7 @@
        expList(
         callExp(printi,
          expList(
-          callExp(g,
+          callExp(patchtest,
            expList(
             intExp(4),
             expList(

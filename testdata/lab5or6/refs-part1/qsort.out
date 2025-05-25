@@ -105,7 +105,8 @@
                   seqExp(
                    expList(
                     whileExp(
-                     iffExp(
+                     opExp(
+                      AND,
                       opExp(
                        LESSTHAN,
                        varExp(
@@ -120,8 +121,7 @@
                         subscriptVar(
                          simpleVar(list),
                          varExp(
-                          simpleVar(j))))),
-                      intExp(0)),
+                          simpleVar(j)))))),
                      assignExp(
                       simpleVar(j),
                       opExp(
@@ -142,7 +142,8 @@
                          simpleVar(j))))),
                      expList(
                       whileExp(
-                       iffExp(
+                       opExp(
+                        AND,
                         opExp(
                          LESSTHAN,
                          varExp(
@@ -157,8 +158,7 @@
                           subscriptVar(
                            simpleVar(list),
                            varExp(
-                            simpleVar(i))))),
-                        intExp(0)),
+                            simpleVar(i)))))),
                        assignExp(
                         simpleVar(i),
                         opExp(
