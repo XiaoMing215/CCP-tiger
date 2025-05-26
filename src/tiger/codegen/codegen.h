@@ -52,12 +52,14 @@ private:
   std::string fs_; // Frame size label_
   std::unique_ptr<canon::Traces> traces_;
   std::unique_ptr<AssemInstr> assem_instr_;
-  void PushRegOnStack(assem::InstrList &instr_list, temp::Temp *reg);
-  void PopRegFromStack(assem::InstrList &instr_list, temp::Temp *reg);
-  void PushRegToPos(assem::InstrList &instr_list, temp::Temp *pos,
+  void SaveRegToAddress(assem::InstrList &instr_list, temp::Temp *pos,
                     temp::Temp *to_be_push);
-  void PopRegFromPos(assem::InstrList &instr_list, temp::Temp *pos,
-                     temp::Temp *to_be_pop);
+  void RestoreRegFromAddress(assem::InstrList &list, temp::Temp *base,
+                                    temp::Temp *dst); 
+  void AppendLeaWithOffset(assem::InstrList* list, temp::Temp* dst,
+                     const std::string& base_reg, const std::string& label);
+  void AppendAddImmediate(assem::InstrList* list, temp::Temp* dst, int imm);
+                                   
 };
 
 } // namespace cg

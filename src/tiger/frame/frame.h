@@ -14,7 +14,6 @@ namespace frame {
 
 class Access;
 class Frame;
-//防止两者互相引用
 
 class RegManager {
 public:
@@ -68,61 +67,23 @@ public:
   [[nodiscard]] virtual temp::Temp *ReturnValue() = 0;
 
   temp::Map *temp_map_;
+
 protected:
   std::vector<temp::Temp *> regs_;
 };
 
+// var location in frame or reg
 class Access {
 public:
   /* TODO: Put your lab5 code here */
+  Access() {}
+  virtual tree::Exp *ToExp(tree::Exp *framePtr)
+      const = 0; // Get the expression to access the variable
+  static Access *AllocLocal(Frame *frame, bool escape);
 
   virtual ~Access() = default;
-  virtual tree::Exp *ToExp(tree::Exp *framePtr) const = 0;
-  //统一生成中间表示的 tree::Exp
-  //translate 阶段统一调用 access->ToExp(fp)
-  static Access *AllocLocal(Frame *frame, bool escape);
-  //保持translate引用一致性
+  
 };
-
-// class Frame {
-//   /* TODO: Put your lab5 code here */
-//   public:
-//     // Frame构造函数：由x64frame当中的Frame(8, 0, name, formals)得到 用的formals是指针类型
-//     // Frame(int word_size, int offset, temp::Label *name, std::list<Access *> *formals)
-//     //   : word_size_(word_size), offset_(offset), name_(name), formals_(formals), total_size_(0), local_count_(0), out_args_(0) {}
-
-//     Frame(temp::Label *name) : offset_(0), name_(name) {}
-//      ~Frame() {};
-
-//     std::string GetLabel() { return name_->Name(); };
-//     // virtual temp::Label *Name() const = 0;
-//     virtual std::list<frame::Access *> *Formals() const = 0;
-//     //上三种全是x64的要求
-//     virtual int AllocLocal() = 0;
-//     virtual Access *AllocLocal(bool escape) = 0;
-//     virtual void AllocOutgoSpace(int size) = 0;
-
-//     virtual std::list<Access *> *Formals() { return formals_; }
-
-//     virtual int WordSize() { return word_size_; }
-//     virtual int TotalSize() { return total_size_; }
-
-//     //translate处需要的函数
-//     frame::Access *StaticLink(){return formals_->front();}  
-//     [[nodiscard]] const std::list<frame::Access *> &GetFormalst() const { return *formals_; }
-//     [[nodiscard]] int Size() const { return -offset_; }
-//     [[nodiscard]] const std::list<tree::Stm*> &GetVSList() const { return view_shift_stm; }
-//   public:
-//     int word_size_;
-//     int offset_ = 0;
-//     int out_args_ = 0;
-//     temp::Label *name_ = nullptr;
-//     std::list<Access *> *formals_;
-//     std::vector<Access *> locals_; // 需要使用unique_ptr，保持性质一致
-//     std::list<tree::Stm*> view_shift_stm;
-//     int total_size_;
-//     int local_count_;
-// };
 
 class Frame {
   /* TODO: Put your lab5 code here */
@@ -150,12 +111,11 @@ public:
 };
 
 
+
 /**
  * Fragments
  */
 
-
-//frag：作为中间代码生成阶段的产物，用于保存翻译后的函数体和字符串常量，供后续生成汇编时使用。
 class Frag {
 public:
   virtual ~Frag() = default;
@@ -200,19 +160,12 @@ public:
   const std::list<Frag*> &GetList() { return frags_; }
 
 private:
-  std::list<Frag*> frags_;
+  std::list<Frag *> frags_;
 };
 
 /* TODO: Put your lab5 code here */
-
+tree::Exp *ExternalCall(std::string s, tree::ExpList *args);
 tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm);
-// x64frame当中的函数
-/* End for lab5 code */
-
-Frame *NewFrame(temp::Label *name, std::list<bool> formals);
-
-tree::Exp *ExternalCall(std::string s,tree::ExpList *args);
-//5-2添加：
 assem::InstrList *ProcEntryExit2(assem::InstrList *body);
 assem::Proc *ProcEntryExit3(frame::Frame *frame, assem::InstrList *body);
 
