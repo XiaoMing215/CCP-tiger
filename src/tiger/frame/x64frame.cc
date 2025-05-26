@@ -6,6 +6,7 @@ extern frame::RegManager *reg_manager;
 
 namespace frame {
 
+//为什么不加逃逸也可以？
 int X64Frame::AllocLocal() {
   // Keep away from the return address on the top of the frame
   offset_ -= reg_manager->WordSize();
@@ -181,6 +182,7 @@ tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm) {
   return stm;
 }
 
+//添加 return sink：
 assem::InstrList *ProcEntryExit2(assem::InstrList *body) {
   /* TODO: Put your lab5 code here */
   body->Append(new assem::OperInstr("", new temp::TempList(),
@@ -188,22 +190,33 @@ assem::InstrList *ProcEntryExit2(assem::InstrList *body) {
   return body;
 }
 
+//这是汇编生成的 最终封装阶段，会：
+// 拼接函数的汇编名字（label）
+// 预留栈空间（根据 frame->Size()）
+// 拼接函数尾部，恢复栈指针并 retq
+// 最后生成一个 assem::Proc 对象，把汇编函数封装好
+
 assem::Proc *ProcEntryExit3(frame::Frame *frame, assem::InstrList *body) {
-  /* TODO: Put your lab5 code here */
-  // TODO: may have bugs
-
-  // prolog part
   std::stringstream prologue;
-  const std::string name = temp::LabelFactory::LabelString(frame->name_);
-  const int rsp_offset = frame->Size();
-  prologue << ".set " << name << "_framesize, " << rsp_offset << std::endl;
-  prologue << name << ":" << std::endl;
-  prologue << "subq $" << rsp_offset << ", %rsp" << std::endl;
-
-  // epilog part
   std::stringstream epilogue;
-  epilogue << "addq $" << rsp_offset << ", %rsp" << std::endl;
-  epilogue << "retq" << std::endl << ".END" << std::endl;
+
+  const std::string func_label = temp::LabelFactory::LabelString(frame->name_);
+  int frame_size = frame->Size();
+
+  // prologue
+  prologue << ".set " << func_label << "_framesize, " << frame_size << "\n";
+  prologue << func_label << ":\n";
+  if (frame_size > 0) {
+    prologue << "subq $" << frame_size << ", %rsp\n";  // 为局部变量留出空间
+  }
+
+  // epilogue
+  if (frame_size > 0) {
+    epilogue << "addq $" << frame_size << ", %rsp\n";  // 恢复栈指针
+  }
+  epilogue << "retq\n";
+  epilogue << ".END\n";
+
   return new assem::Proc(prologue.str(), body, epilogue.str());
 }
 
