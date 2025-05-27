@@ -6,7 +6,6 @@ extern frame::RegManager *reg_manager;
 
 namespace frame {
 
-//为什么不加逃逸也可以？
 int X64Frame::AllocLocal() {
   // Keep away from the return address on the top of the frame
   offset_ -= reg_manager->WordSize();
@@ -22,12 +21,21 @@ X64Frame::X64Frame(temp::Label *name, std::list<bool> formals) : Frame(name) {
 
 std::list<frame::Access *> *X64Frame::Formals() { return nullptr; }
 
+int X64Frame::Size() {
+  const int arg_num = formals_->size();
+  const int arg_reg_num = reg_manager->ArgRegs()->GetList().size();
+  return -offset_ + std::max(arg_num - arg_reg_num, 0) * reg_manager->WordSize();
+//  return -offset_;
+}
+
+
 /* TODO: Put your lab5 code here */
 temp::TempList *X64RegManager::Registers() {
   /* TODO: Put your lab5 code here */
-  // except rsi
+  // !!!typo!!! should be RSP not RSI
+  // except rsp
   /**
-   * Get general-purpose registers except RSI
+   * Get general-purpose registers except RSP
    * NOTE: returned temp list should be in the order of calling convention
    * @return general-purpose registers
    */
@@ -36,9 +44,9 @@ temp::TempList *X64RegManager::Registers() {
       regs_[RBX],
       regs_[RCX],
       regs_[RDX],
+      regs_[RSI],
       regs_[RDI],
       regs_[RBP],
-      regs_[RSP],
       regs_[R8],
       regs_[R9],
       regs_[R10],
@@ -75,6 +83,13 @@ temp::TempList *X64RegManager::CallerSaves() {
    * @return caller-saved registers
    */
   return new temp::TempList({
+      regs_[RAX],
+      regs_[RCX],
+      regs_[RDX],
+      regs_[RSI],
+      regs_[RDI],
+      regs_[R8],
+      regs_[R9],
       regs_[R10],
       regs_[R11],
   });
@@ -145,6 +160,20 @@ tree::Exp *ExternalCall(std::string s, tree::ExpList *args) {
 tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm) {
   /* TODO: Put your lab5 code here */
   // TODO: may have bugs
+  tree::Stm *res_stm = nullptr;
+
+  // Save callee-saved registers
+  tree::Stm *save_callee_stm = new tree::ExpStm(new tree::ConstExp(0));
+  temp::TempList *callee_saved = new temp::TempList();
+  for (auto reg : reg_manager->CalleeSaves()->GetList()) {
+    temp::Temp *dst = temp::TempFactory::NewTemp();
+    save_callee_stm =
+        new tree::SeqStm(
+        save_callee_stm, new tree::MoveStm(new tree::TempExp(dst),
+                                                     new tree::TempExp(reg)));
+    callee_saved->Append(dst);
+  }
+
   // num of regs that can store arg
   auto arg_reg_num = reg_manager->ArgRegs()->GetList().size();
   // num of arg of proc
@@ -154,13 +183,12 @@ tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm) {
   for (Access *formal : *(frame->formals_)) {
     tree::Exp *dst =
         formal->ToExp(new tree::TempExp(reg_manager->FramePointer()));
-    tree::Exp *src;
+    tree::Exp *src = nullptr;
     if (formal_idx < arg_reg_num) {
       // in reg
       src = new tree::TempExp(reg_manager->ArgRegs()->NthTemp(formal_idx));
     } else {
       // in stack
-      // TODO: may have bugs in offset
       src = new tree::MemExp(new tree::BinopExp(
           tree::BinOp::PLUS_OP, new tree::TempExp(reg_manager->FramePointer()),
           new tree::ConstExp((arg_num - formal_idx) *
@@ -177,12 +205,25 @@ tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm) {
   }
   if (view_shift) {
     tail->right_ = stm;
-    return view_shift;
+    res_stm = view_shift;
+  } else {
+    res_stm = stm;
   }
-  return stm;
+
+  res_stm = new tree::SeqStm(save_callee_stm, res_stm);
+
+  // Restore callee-saved registers
+  auto saved = callee_saved->GetList().cbegin();
+  for (auto reg : reg_manager->CalleeSaves()->GetList()) {
+    res_stm = new tree::SeqStm(res_stm, new tree::MoveStm(new tree::TempExp(reg),
+                                                  new tree::TempExp(*saved)));
+    ++saved;
+  }
+  delete callee_saved;
+
+  return res_stm;
 }
 
-//添加 return sink：
 assem::InstrList *ProcEntryExit2(assem::InstrList *body) {
   /* TODO: Put your lab5 code here */
   body->Append(new assem::OperInstr("", new temp::TempList(),
@@ -190,33 +231,34 @@ assem::InstrList *ProcEntryExit2(assem::InstrList *body) {
   return body;
 }
 
-//这是汇编生成的 最终封装阶段，会：
-// 拼接函数的汇编名字（label）
-// 预留栈空间（根据 frame->Size()）
-// 拼接函数尾部，恢复栈指针并 retq
-// 最后生成一个 assem::Proc 对象，把汇编函数封装好
-
 assem::Proc *ProcEntryExit3(frame::Frame *frame, assem::InstrList *body) {
+  /* TODO: Put your lab5 code here */
+  // TODO: may have bugs
+
+  // prolog part
   std::stringstream prologue;
+  const std::string name = temp::LabelFactory::LabelString(frame->name_);
+  const int rsp_offset = frame->Size();
+  prologue << ".set " << name << "_framesize, " << rsp_offset << std::endl;
+  prologue << name << ":" << std::endl;
+
+  if(frame->name_->Name() == "tigermain") {
+    prologue << "subq $8, %rsp" << std::endl;
+    prologue << "movq %rbp, (%rsp)" << std::endl;
+  }
+  
+  prologue << "subq $" << rsp_offset << ", %rsp" << std::endl;
+
+  // epilog part
   std::stringstream epilogue;
+  epilogue << "addq $" << rsp_offset << ", %rsp" << std::endl;
 
-  const std::string func_label = temp::LabelFactory::LabelString(frame->name_);
-  int frame_size = frame->Size();
-
-  // prologue
-  prologue << ".set " << func_label << "_framesize, " << frame_size << "\n";
-  prologue << func_label << ":\n";
-  if (frame_size > 0) {
-    prologue << "subq $" << frame_size << ", %rsp\n";  // 为局部变量留出空间
+  if(frame->name_->Name() == "tigermain") {
+    epilogue << "movq (%rsp), %rbp" << std::endl;
+    epilogue << "addq $8, %rsp" << std::endl;
   }
 
-  // epilogue
-  if (frame_size > 0) {
-    epilogue << "addq $" << frame_size << ", %rsp\n";  // 恢复栈指针
-  }
-  epilogue << "retq\n";
-  epilogue << ".END\n";
-
+  epilogue << "retq" << std::endl;
   return new assem::Proc(prologue.str(), body, epilogue.str());
 }
 

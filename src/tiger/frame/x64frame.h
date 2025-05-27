@@ -12,14 +12,14 @@ class X64RegManager : public RegManager {
   /* TODO: Put your lab5 code here */
 public:
   enum X64Reg {
-    RAX = 0,
-    RBX,
+    RBX = 0,
     RCX,
     RDX,
     RSI,
     RDI,
-    RSP,
     RBP,
+    RSP,
+    RAX,
     R8,
     R9,
     R10,
@@ -30,61 +30,89 @@ public:
     R15
   };
 
-  const std::string X64RegNames[16] = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
-                                       "rsp", "rbp", "r8",  "r9",  "r10", "r11",
+  const std::string X64RegNames[16] = {"rbx", "rcx", "rdx", "rsi", "rdi", "rbp",
+                                       "rsp", "rax", "r8",  "r9",  "r10", "r11",
                                        "r12", "r13", "r14", "r15"};
   const int WORD_SIZE = 8;
 
 public:
   X64RegManager();
 
-  [[nodiscard]] temp::TempList *Registers() override;
+  /**
+   * Get general-purpose registers except RSI
+   * NOTE: returned temp list should be in the order of calling convention
+   * @return general-purpose registers
+   */
+  temp::TempList *Registers();
 
-  [[nodiscard]] temp::TempList *ArgRegs() override;
+  /**
+   * Get registers which can be used to hold arguments
+   * NOTE: returned temp list must be in the order of calling convention
+   * @return argument registers
+   */
+  temp::TempList *ArgRegs();
 
-  [[nodiscard]] temp::TempList *CallerSaves() override;
+  /**
+   * Get caller-saved registers
+   * NOTE: returned registers must be in the order of calling convention
+   * @return caller-saved registers
+   */
+  temp::TempList *CallerSaves();
 
-  [[nodiscard]] temp::TempList *CalleeSaves() override;
+  /**
+   * Get callee-saved registers
+   * NOTE: returned registers must be in the order of calling convention
+   * @return callee-saved registers
+   */
+  temp::TempList *CalleeSaves();
 
-  [[nodiscard]] temp::TempList *ReturnSink() override;
+  /**
+   * Get return-sink registers
+   * @return return-sink registers
+   */
+  temp::TempList *ReturnSink();
 
-  [[nodiscard]] int WordSize() override;
+  /**
+   * Get word size
+   */
+  int WordSize();
 
-  [[nodiscard]] temp::Temp *FramePointer() override;
+  temp::Temp *FramePointer();
 
-  [[nodiscard]] temp::Temp *StackPointer() override;
+  temp::Temp *StackPointer();
 
-  [[nodiscard]] temp::Temp *ReturnValue() override;
-  
+  temp::Temp *ReturnValue();
 };
-//这一块对应cc文件的第一大段 不用我们修改 是寄存器分配相关的
 
-//由于translate要用到inframeaccess 这里要申明：
+/* TODO: Put your lab5 code here */
+// visiting var in frame
 class InFrameAccess : public Access {
 public:
   int offset;
 
   explicit InFrameAccess(int offset) : offset(offset) {}
+  /* TODO: Put your lab5 code here */
 
+  // return off(fp) (for visiting var on stack)
   tree::Exp *ToExp(tree::Exp *framePtr) const override;
 };
 
-// 变量访问（Access）的子类，表示变量保存在寄存器中的情况。
+// visiting var in reg
 class InRegAccess : public Access {
 public:
-  temp::Temp *reg; 
-  //temp::Temp *reg：这个 Temp 代表一个虚拟寄存器，和最终的物理寄存器通过寄存器分配（regalloc）映射。
+  temp::Temp *reg; // Temp is a data structure represents virtual registers
   explicit InRegAccess(temp::Temp *reg) : reg(reg) {}
+  /* TODO: Put your lab5 code here */
   tree::Exp *ToExp(tree::Exp *framePtr) const override;
-  //返回一个抽象语法树（tree::Exp），表示访问这个变量的表达式。
 };
 
-//表示一个具体函数的栈帧（frame）信息，适用于 x86-64 架构。
 class X64Frame : public Frame {
+  /* TODO: Put your lab5 code here */
 public:
   X64Frame(temp::Label *name, std::list<bool> formals);
   int AllocLocal();
   std::list<frame::Access *> *Formals();
+  int Size() override;
 };
 
 } // namespace frame
