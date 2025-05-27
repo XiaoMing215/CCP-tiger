@@ -40,7 +40,8 @@
                 FALSE),
                fieldList()),
               int,
-              iffExp(
+              opExp(
+               AND,
                opExp(
                 GREATEQ,
                 callExp(ord,
@@ -62,19 +63,18 @@
                 callExp(ord,
                  expList(
                   stringExp(9),
-                  expList()))),
-               intExp(0))),
+                  expList()))))),
              fundecList(
               fundec(skipto,
                fieldList(),
                whileExp(
-                iffExp(
+                opExp(
+                 OR,
                  opExp(
                   EQUAL,
                   varExp(
                    simpleVar(buffer)),
                   stringExp( )),
-                 intExp(1),
                  opExp(
                   EQUAL,
                   varExp(

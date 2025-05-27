@@ -1,75 +1,244 @@
+#include <sstream>
 #include "tiger/frame/x64frame.h"
+#include "frame.h"
 
 extern frame::RegManager *reg_manager;
 
 namespace frame {
 
-X64RegManager::X64RegManager() : RegManager() {
-    /* TODO: Put your lab5 code here */
+//为什么不加逃逸也可以？
+int X64Frame::AllocLocal() {
+  // Keep away from the return address on the top of the frame
+  offset_ -= reg_manager->WordSize();
+  return offset_;
 }
 
+X64Frame::X64Frame(temp::Label *name, std::list<bool> formals) : Frame(name) {
+  formals_ = new std::list<frame::Access *>();
+  for (auto formal_escape : formals) {
+    formals_->push_back(frame::Access::AllocLocal(this, formal_escape));
+  }
+}
+
+std::list<frame::Access *> *X64Frame::Formals() { return nullptr; }
+
+/* TODO: Put your lab5 code here */
 temp::TempList *X64RegManager::Registers() {
-    /* TODO: Put your lab5 code here */
+  /* TODO: Put your lab5 code here */
+  // except rsi
+  /**
+   * Get general-purpose registers except RSI
+   * NOTE: returned temp list should be in the order of calling convention
+   * @return general-purpose registers
+   */
+  return new temp::TempList({
+      regs_[RAX],
+      regs_[RBX],
+      regs_[RCX],
+      regs_[RDX],
+      regs_[RDI],
+      regs_[RBP],
+      regs_[RSP],
+      regs_[R8],
+      regs_[R9],
+      regs_[R10],
+      regs_[R11],
+      regs_[R12],
+      regs_[R13],
+      regs_[R14],
+      regs_[R15],
+  });
 }
 
 temp::TempList *X64RegManager::ArgRegs() {
-    /* TODO: Put your lab5 code here */
+  /* TODO: Put your lab5 code here */
+  /**
+   * Get registers which can be used to hold arguments
+   * NOTE: returned temp list must be in the order of calling convention
+   * @return argument registers
+   */
+  return new temp::TempList({
+      regs_[RDI],
+      regs_[RSI],
+      regs_[RDX],
+      regs_[RCX],
+      regs_[R8],
+      regs_[R9],
+  });
 }
 
 temp::TempList *X64RegManager::CallerSaves() {
-    /* TODO: Put your lab5 code here */
+  /* TODO: Put your lab5 code here */
+  /**
+   * Get caller-saved registers
+   * NOTE: returned registers must be in the order of calling convention
+   * @return caller-saved registers
+   */
+  return new temp::TempList({
+      regs_[R10],
+      regs_[R11],
+  });
 }
 
 temp::TempList *X64RegManager::CalleeSaves() {
-    /* TODO: Put your lab5 code here */
+  /* TODO: Put your lab5 code here */
+  /**
+   * Get callee-saved registers
+   * NOTE: returned registers must be in the order of calling convention
+   * @return callee-saved registers
+   */
+  return new temp::TempList({
+      regs_[RBX],
+      regs_[RBP],
+      regs_[R12],
+      regs_[R13],
+      regs_[R14],
+      regs_[R15],
+  });
 }
 
 temp::TempList *X64RegManager::ReturnSink() {
-    /* TODO: Put your lab5 code here */
+  /* TODO: Put your lab5 code here */
+  /**
+   * Get return-sink registers
+   * @return return-sink registers
+   */
+  temp::TempList *temp_list = CalleeSaves();
+  temp_list->Append(StackPointer());
+  temp_list->Append(ReturnValue());
+  return temp_list;
 }
 
-int X64RegManager::WordSize() { /* TODO: Put your lab5 code here */ }
-
-temp::Temp *X64RegManager::FramePointer() { /* TODO: Put your lab5 code here */ }
-
-temp::Temp *X64RegManager::StackPointer() { /* TODO: Put your lab5 code here */ }
-
-temp::Temp *X64RegManager::ReturnValue() { /* TODO: Put your lab5 code here */ }
-
-class InFrameAccess : public Access {
+int X64RegManager::WordSize() {
   /* TODO: Put your lab5 code here */
-  
-  /* End for lab5 code */
-};
-
-
-class InRegAccess : public Access {
-public:
-  temp::Temp *reg;
-
-  explicit InRegAccess(temp::Temp *reg) : reg(reg) {}
-  /* TODO: Put your lab5 code here */
-
-  /* End for lab5 code */
-};
-
-class X64Frame : public Frame {
-  /* TODO: Put your lab5 code here */
-
-  /* End for lab5 code */
-};
-
-/* TODO: Put your lab5 code here */
-
-frame::Frame *NewFrame(temp::Label *name, std::list<bool> formals) {
-    /* TODO: Put your lab5 code here */
+  return WORD_SIZE;
 }
 
-tree::Exp *ExternalCall(std::string_view s, tree::ExpList *args) {
-    /* TODO: Put your lab5 code here */
+temp::Temp *X64RegManager::FramePointer() {
+  /* TODO: Put your lab5 code here */
+  return regs_[RBP];
 }
 
+temp::Temp *X64RegManager::StackPointer() {
+  /* TODO: Put your lab5 code here */
+  return regs_[RSP];
+}
 
-/* End for lab5 code */
+temp::Temp *X64RegManager::ReturnValue() {
+  /* TODO: Put your lab5 code here */
+  return regs_[RAX];
+}
 
+X64RegManager::X64RegManager() : RegManager() {
+  for (std::string reg_name : X64RegNames) {
+    temp::Temp *reg = temp::TempFactory::NewTemp();
+    temp_map_->Enter(reg, new std::string("%" + reg_name));
+    regs_.push_back(reg);
+  }
+}
+
+tree::Exp *ExternalCall(std::string s, tree::ExpList *args) {
+  return new tree::CallExp(new tree::NameExp(temp::LabelFactory::NamedLabel(s)),
+                           args);
+}
+
+tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm) {
+  /* TODO: Put your lab5 code here */
+  // TODO: may have bugs
+  // num of regs that can store arg
+  auto arg_reg_num = reg_manager->ArgRegs()->GetList().size();
+  // num of arg of proc
+  auto arg_num = frame->formals_->size();
+  int formal_idx = 0;  // current processing formal index
+  tree::SeqStm *view_shift = nullptr, *tail = nullptr;
+  for (Access *formal : *(frame->formals_)) {
+    tree::Exp *dst =
+        formal->ToExp(new tree::TempExp(reg_manager->FramePointer()));
+    tree::Exp *src;
+    if (formal_idx < arg_reg_num) {
+      // in reg
+      src = new tree::TempExp(reg_manager->ArgRegs()->NthTemp(formal_idx));
+    } else {
+      // in stack
+      // TODO: may have bugs in offset
+      src = new tree::MemExp(new tree::BinopExp(
+          tree::BinOp::PLUS_OP, new tree::TempExp(reg_manager->FramePointer()),
+          new tree::ConstExp((arg_num - formal_idx) *
+                             reg_manager->WordSize())));
+    }
+    tree::MoveStm *move_stm = new tree::MoveStm(dst, src);
+    if (!tail) {
+      view_shift = tail = new tree::SeqStm(move_stm, nullptr);
+    } else {
+      tail->right_ = new tree::SeqStm(move_stm, nullptr);
+      tail = static_cast<tree::SeqStm *>(tail->right_);
+    }
+    ++formal_idx;
+  }
+  if (view_shift) {
+    tail->right_ = stm;
+    return view_shift;
+  }
+  return stm;
+}
+
+//添加 return sink：
+assem::InstrList *ProcEntryExit2(assem::InstrList *body) {
+  /* TODO: Put your lab5 code here */
+  body->Append(new assem::OperInstr("", new temp::TempList(),
+                                    reg_manager->ReturnSink(), nullptr));
+  return body;
+}
+
+//这是汇编生成的 最终封装阶段，会：
+// 拼接函数的汇编名字（label）
+// 预留栈空间（根据 frame->Size()）
+// 拼接函数尾部，恢复栈指针并 retq
+// 最后生成一个 assem::Proc 对象，把汇编函数封装好
+
+assem::Proc *ProcEntryExit3(frame::Frame *frame, assem::InstrList *body) {
+  std::stringstream prologue;
+  std::stringstream epilogue;
+
+  const std::string func_label = temp::LabelFactory::LabelString(frame->name_);
+  int frame_size = frame->Size();
+
+  // prologue
+  prologue << ".set " << func_label << "_framesize, " << frame_size << "\n";
+  prologue << func_label << ":\n";
+  if (frame_size > 0) {
+    prologue << "subq $" << frame_size << ", %rsp\n";  // 为局部变量留出空间
+  }
+
+  // epilogue
+  if (frame_size > 0) {
+    epilogue << "addq $" << frame_size << ", %rsp\n";  // 恢复栈指针
+  }
+  epilogue << "retq\n";
+  epilogue << ".END\n";
+
+  return new assem::Proc(prologue.str(), body, epilogue.str());
+}
+
+Access *Access::AllocLocal(Frame *frame, bool escape) {
+  if (escape) {
+    //  Frame::AllocLocal(TRUE) Returns an InFrameAccess with an offset from the
+    //  frame pointer
+    return new frame::InFrameAccess(frame->AllocLocal());
+  } else {
+    //  Frame::AllocLocal(FALSE) Returns a register InRegAccess(t481)
+    return new frame::InRegAccess(temp::TempFactory::NewTemp());
+  }
+}
+
+tree::Exp *InFrameAccess::ToExp(tree::Exp *framePtr) const {
+  // return off(fp) (for visiting var on stack)
+  return new tree::MemExp(new tree::BinopExp(
+      tree::BinOp::PLUS_OP, new tree::ConstExp(offset), framePtr));
+}
+
+tree::Exp *InRegAccess::ToExp(tree::Exp *framePtr) const {
+  // visiting var in reg
+  return new tree::TempExp(reg);
+}
 } // namespace frame
