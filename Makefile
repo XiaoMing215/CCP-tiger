@@ -98,6 +98,30 @@ ziplab5-2:
 	src/tiger/codegen/assem.* \
 	src/tiger/codegen/codegen.* \
 
+ziplab6:
+	zip -j lab6-answer.zip \
+    src/tiger/parse/tiger.y \
+    src/tiger/lex/tiger.lex \
+    src/tiger/lex/scanner.h \
+    src/tiger/semant/semant.* \
+	src/tiger/escape/escape.* \
+	src/tiger/frame/frame.h \
+	src/tiger/frame/temp.* \
+	src/tiger/frame/x64frame.* \
+	src/tiger/translate/translate.* \
+	src/tiger/translate/tree.* \
+	src/tiger/canon/canon.* \
+	src/tiger/codegen/assem.* \
+	src/tiger/codegen/codegen.* \
+	src/tiger/liveness/flowgraph.*\
+	src/tiger/liveness/liveness.*\
+	src/tiger/regalloc/color.*\
+	src/tiger/regalloc/regalloc.*\
+	src/tiger/util/graph.h\
+	src/tiger/util/table.h\
+
+
+
 clean:
 	rm -rf build/ src/tiger/lex/scannerbase.h src/tiger/lex/lex.cc \
 		src/tiger/parse/parserbase.h src/tiger/parse/parse.cc

@@ -229,6 +229,7 @@ test_lab6() {
   local mergecase_name
 
   build tiger-compiler
+
   for testcase in "$testcase_dir"/*.tig; do
     testcase_name=$(basename "$testcase" | cut -f1 -d".")
     local ref=${ref_dir}/${testcase_name}.out
