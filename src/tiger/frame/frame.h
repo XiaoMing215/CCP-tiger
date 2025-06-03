@@ -97,13 +97,13 @@ public:
   int offset_ = 0;                        // - frame size
 
   // label at which the function’s machine code is to begin
-  temp::Label *name_ = nullptr; // indicate the return address (jump to according label)
+  temp::Label *frameLabel_ = nullptr; // indicate the return address (jump to according label)
 public:
   Frame() {}
-  Frame(temp::Label *name) : offset_(0), name_(name) {}
+  Frame(temp::Label *name) : offset_(0), frameLabel_(name) {}
   ~Frame() {}
   [[nodiscard]] virtual int Size() { return -offset_; }
-  [[nodiscard]] std::string GetLabel() { return name_->Name(); }
+  [[nodiscard]] std::string GetFrameLabel() { return frameLabel_->Name(); }
   [[nodiscard]] std::list<frame::Access *> *GetFormals() {return formals_;}
   virtual int AllocLocal() = 0;  // return an offset from the frame pointer
 };
@@ -165,7 +165,7 @@ private:
 tree::Exp *ExternalCall(std::string s, tree::ExpList *args);
 tree::Stm *ProcEntryExit1(frame::Frame *frame, tree::Stm *stm);
 assem::InstrList *ProcEntryExit2(assem::InstrList *body);
-assem::Proc *ProcEntryExit3(frame::Frame *frame, assem::InstrList *body);
+assem::Proc *BuildCompleteProcedure(frame::Frame *frame, assem::InstrList *body);
 
 } // namespace frame
 

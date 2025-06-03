@@ -54,7 +54,7 @@ void CodeGen::PopRegFromPos(assem::InstrList &instr_list, temp::Temp *pos,
 }
 
 void CodeGen::Codegen() {
-  fs_ = frame_->GetLabel() + "_framesize"; // // Frame size label_
+  fs_ = frame_->GetFrameLabel() + "_framesize"; // // Frame size label_
   auto instr_list = new assem::InstrList();
 
 //    // Save callee-saved registers

@@ -231,18 +231,18 @@ assem::InstrList *ProcEntryExit2(assem::InstrList *body) {
   return body;
 }
 
-assem::Proc *ProcEntryExit3(frame::Frame *frame, assem::InstrList *body) {
+assem::Proc *BuildCompleteProcedure(frame::Frame *frame, assem::InstrList *body) {
   /* TODO: Put your lab5 code here */
   // TODO: may have bugs
 
   // prolog part
   std::stringstream prologue;
-  const std::string name = temp::LabelFactory::LabelString(frame->name_);
+  const std::string name = temp::LabelFactory::LabelString(frame->frameLabel_);
   const int rsp_offset = frame->Size();
   prologue << ".set " << name << "_framesize, " << rsp_offset << std::endl;
   prologue << name << ":" << std::endl;
 
-  if(frame->name_->Name() == "tigermain") {
+  if(frame->frameLabel_->Name() == "tigermain") {
     prologue << "subq $8, %rsp" << std::endl;
     prologue << "movq %rbp, (%rsp)" << std::endl;
   }
@@ -253,7 +253,7 @@ assem::Proc *ProcEntryExit3(frame::Frame *frame, assem::InstrList *body) {
   std::stringstream epilogue;
   epilogue << "addq $" << rsp_offset << ", %rsp" << std::endl;
 
-  if(frame->name_->Name() == "tigermain") {
+  if(frame->frameLabel_->Name() == "tigermain") {
     epilogue << "movq (%rsp), %rbp" << std::endl;
     epilogue << "addq $8, %rsp" << std::endl;
   }
