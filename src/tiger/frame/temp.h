@@ -5,12 +5,14 @@
 
 #include <list>
 
+//提供无限的虚拟寄存器
 namespace temp {
 
 using Label = sym::Symbol;
 
 class LabelFactory {
 public:
+//label与代码的跳转相关
   static Label *NewLabel();
   static Label *NamedLabel(std::string_view name);
   static std::string LabelString(Label *s);
@@ -28,7 +30,7 @@ public:
 
 private:
   int num_;
-  explicit Temp(int num) : num_(num) {}
+  explicit Temp(int num) : num_(num) {} //每个虚拟寄存器编号唯一
 };
 
 class TempFactory {
@@ -41,6 +43,9 @@ private:
 };
 
 class Map {
+  //管理 Temp*（虚拟寄存器）到字符串名称映射 的数据结构
+  //汇编代码打印虚拟寄存器对应的名字
+  //
 public:
   void Enter(Temp *t, std::string *s);
   std::string *Look(Temp *t);

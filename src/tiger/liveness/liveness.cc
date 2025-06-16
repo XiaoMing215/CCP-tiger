@@ -2,147 +2,130 @@
 
 extern frame::RegManager *reg_manager;
 
-#define LIVENESS_LOG(fmt, args...)                                            \
-  do {                                                                         \
-  } while (0);
-
-//
-//#define LIVENESS_LOG(fmt, args...)                                            \
-//  do {                                                                         \
-//    printf("[LIVENESS_LOG][%s:%d:%s] " fmt "\n", __FILE__, __LINE__,          \
-//           __FUNCTION__, ##args);                                              \
-//    fflush(stdout);                                                            \
-//  } while (0);
-
 namespace live {
 
 bool MoveList::Contain(INodePtr src, INodePtr dst) {
   return std::any_of(move_list_.cbegin(), move_list_.cend(),
-                     [src, dst](std::pair<INodePtr, INodePtr> move) {
+                     [src, dst](const std::pair<INodePtr, INodePtr> &move) {
                        return move.first == src && move.second == dst;
                      });
 }
 
 void MoveList::Delete(INodePtr src, INodePtr dst) {
   assert(src && dst);
-  auto move_it = move_list_.begin();
-  for (; move_it != move_list_.end(); move_it++) {
-    if (move_it->first == src && move_it->second == dst) {
-      break;
-    }
+  auto move_it = std::find_if(move_list_.begin(), move_list_.end(),
+                              [src, dst](const std::pair<INodePtr, INodePtr> &move) {
+                                return move.first == src && move.second == dst;
+                              });
+  if (move_it != move_list_.end()) {
+    move_list_.erase(move_it);
   }
-  move_list_.erase(move_it);
 }
 
 MoveList *MoveList::Union(MoveList *list) {
   auto *res = new MoveList();
-  for (auto move : move_list_) {
+  for (const auto &move : move_list_) {
     res->move_list_.push_back(move);
   }
-  for (auto move : list->GetList()) {
-    if (!res->Contain(move.first, move.second))
+  for (const auto &move : list->GetList()) {
+    if (!res->Contain(move.first, move.second)) {
       res->move_list_.push_back(move);
+    }
   }
   return res;
 }
 
 MoveList *MoveList::Intersect(MoveList *list) {
   auto *res = new MoveList();
-  for (auto move : list->GetList()) {
-    if (Contain(move.first, move.second))
+  for (const auto &move : list->GetList()) {
+    if (Contain(move.first, move.second)) {
       res->move_list_.push_back(move);
+    }
   }
   return res;
 }
+//
 
 bool SameSet(const std::set<temp::Temp *> &first,
              const std::set<temp::Temp *> &second) {
   return first == second;
-//  if (first.size() != second.size())
-//    return false;
-//  auto it_second = second.begin();
-//  for (auto it_first : first) {
-//    if (it_first != *it_second)
-//      return false;
-//    ++it_second;
-//  }
-//  return true;
 }
 
 std::set<temp::Temp *> ToSet(const std::list<temp::Temp *> &origin) {
   std::set<temp::Temp *> res;
-  for (auto &it : origin)
+  for (const auto &it : origin) {
     res.insert(it);
+  }
   return res;
-};
+}
 
 temp::TempList *ToTempList(const std::set<temp::Temp *> &origin) {
-  temp::TempList *res = new temp::TempList();
-  for (auto &it : origin)
+  auto *res = new temp::TempList();
+  for (const auto &it : origin) {
     res->Append(it);
+  }
   return res;
-};
+}
+
 
 void LiveGraphFactory::LiveMap() {
-  /* TODO: Put your lab6 code here */
-  LIVENESS_LOG("start")
-
+  // 初始化每个节点的 in 和 out 集合为空
   for (fg::FNodePtr node : flowgraph_->Nodes()->GetList()) {
     in_->Enter(node, new temp::TempList());
     out_->Enter(node, new temp::TempList());
   }
 
-  bool fixed = false;
-  while (!fixed) {
-    fixed = true;
+  bool changed = true;
+  while (changed) {
+    changed = false;
+
     for (fg::FNodePtr node : flowgraph_->Nodes()->GetList()) {
       assem::Instr *instr = node->NodeInfo();
-      temp::TempList *use = instr->Use();
-      temp::TempList *def = instr->Def();
 
-      // out[s] = U(n ∈ succ[s]) in[n]
-      std::set<temp::Temp *> out_set;
+      // 当前节点的 use 和 def 集合
+      std::set<temp::Temp *> use_set = ToSet(instr->Use()->GetList());
+      std::set<temp::Temp *> def_set = ToSet(instr->Def()->GetList());
+
+      // 计算 out[node] = 联合所有后继节点的 in 集合
+      std::set<temp::Temp *> new_out_set;
       for (fg::FNodePtr succ : node->Succ()->GetList()) {
-        out_set.merge(ToSet(in_->Look(succ)->GetList()));
+        std::set<temp::Temp *> succ_in_set = ToSet(in_->Look(succ)->GetList());
+        new_out_set.merge(std::move(succ_in_set));
       }
 
-      // in[s] = use[s] U (out[s] – def[s])
-      std::set<temp::Temp *> in_set = ToSet(use->GetList());
-      std::set<temp::Temp *> def_set = ToSet(def->GetList());
-      std::set<temp::Temp *> out_set_ori = ToSet(out_->Look(node)->GetList());
-      std::list<temp::Temp *> diff;
-      std::set_difference(out_set_ori.begin(), out_set_ori.end(),
+      // 计算 in[node] = use[node] ∪ (out[node] - def[node])
+      std::list<temp::Temp *> out_minus_def;
+      std::set_difference(new_out_set.begin(), new_out_set.end(),
                           def_set.begin(), def_set.end(),
-                          back_inserter(diff));
-      in_set.merge(ToSet(diff));
+                          std::back_inserter(out_minus_def));
+      std::set<temp::Temp *> new_in_set = use_set;
+      new_in_set.merge(ToSet(out_minus_def));
 
-      std::set<temp::Temp *> in_set_ori = ToSet(in_->Look(node)->GetList());
-      // check if in_set and out_set same
-      if (!SameSet(in_set, in_set_ori) || !SameSet(out_set, out_set_ori)) {
-        fixed = false;
-        temp::TempList *in = ToTempList(in_set);
-        temp::TempList *out = ToTempList(out_set);
-        in_->Set(node, in);
-        out_->Set(node, out);
+      // 获取当前存储的 in/out
+      std::set<temp::Temp *> old_in_set = ToSet(in_->Look(node)->GetList());
+      std::set<temp::Temp *> old_out_set = ToSet(out_->Look(node)->GetList());
+
+      // 如果 in 或 out 有变化，更新并标记继续迭代
+      if (!SameSet(new_in_set, old_in_set) || !SameSet(new_out_set, old_out_set)) {
+        changed = true;
+        in_->Set(node, ToTempList(new_in_set));
+        out_->Set(node, ToTempList(new_out_set));
       }
     }
   }
-
-  LIVENESS_LOG("finish")
 }
+
 
 void LiveGraphFactory::InterfGraph() {
 
-  LIVENESS_LOG("start")
-
-  // Build precolored InterfGraph
+  // 构建预着色的干涉图
   auto precolored_temps = reg_manager->Registers()->GetList();
-  // create nodes for all precolored regs
+  // 为所有预着色寄存器创建节点
   for (auto precolored_temp : precolored_temps) {
     INodePtr node = live_graph_.interf_graph->NewNode(precolored_temp);
     temp_node_map_->Enter(precolored_temp, node);
   }
-  // add all edges between precolored regs
+  // 在所有预着色寄存器之间添加边
   for (temp::Temp *temp1 : precolored_temps) {
     for (temp::Temp *temp2 : precolored_temps) {
       if (temp1 != temp2) {
@@ -153,12 +136,11 @@ void LiveGraphFactory::InterfGraph() {
     }
   }
 
-  /* TODO: Put your lab6 code here */
-  // create nodes for all temp regs
+  // 为所有临时寄存器创建节点
   for (auto node : flowgraph_->Nodes()->GetList()) {
     assem::Instr *instr = node->NodeInfo();
 
-    // check regs in Use
+    // 检查指令的使用寄存器
     for (auto use : instr->Use()->GetList()) {
       if (temp_node_map_->Look(use))
         continue;
@@ -166,7 +148,7 @@ void LiveGraphFactory::InterfGraph() {
       temp_node_map_->Enter(use, new_node);
     }
 
-    // check regs in Def
+    // 检查指令的定义寄存器
     for (auto def : instr->Def()->GetList()) {
       if (temp_node_map_->Look(def))
         continue;
@@ -175,16 +157,14 @@ void LiveGraphFactory::InterfGraph() {
     }
   }
 
-  // add edges
+  // 添加干涉边
   for (auto node : flowgraph_->Nodes()->GetList()) {
     assem::Instr *instr = node->NodeInfo();
 
-    // For an instruction that defines a variable a, where the live-out
-    // variables are b1, …, bj, the way to add interference edges for it is
+    // 对于定义了变量a，活跃出口为b1, ..., bj的指令，添加干涉边
 
     if (typeid(*instr) == typeid(assem::MoveInstr)) {
-      // If it is a move instruction a ← c, add (a, b1), …, (a, bj),  for any bj
-      // that is not the same as c
+      // 如果是move指令 a ← c，添加 (a, b1), ..., (a, bj)，其中 bj != c
       for (auto def : instr->Def()->GetList()) {
         INodePtr def_node = temp_node_map_->Look(def);
         auto out_set = ToSet(out_->Look(node)->GetList());
@@ -199,7 +179,7 @@ void LiveGraphFactory::InterfGraph() {
           live_graph_.interf_graph->AddEdge(b_node, def_node);
         }
 
-        // for move instr, add in MoveList
+        // move指令将对应节点加入moves集合
         for (temp::Temp *use : instr->Use()->GetList()) {
           INodePtr use_node = temp_node_map_->Look(use);
           live_graph_.moves->Append(use_node, def_node);
@@ -207,8 +187,7 @@ void LiveGraphFactory::InterfGraph() {
       }
 
     } else {
-      // If it is a nonmove instruction, add (a, b1), …, (a, bj)
-      // add edges between def and out for non move instr
+      // 对于非move指令，添加 (a, b1), ..., (a, bj) 边
       for (auto def : instr->Def()->GetList()) {
         INodePtr def_node = temp_node_map_->Look(def);
         for (auto out : out_->Look(node)->GetList()) {
@@ -219,8 +198,6 @@ void LiveGraphFactory::InterfGraph() {
       }
     }
   }
-
-  LIVENESS_LOG("finish")
 }
 
 void LiveGraphFactory::Liveness() {

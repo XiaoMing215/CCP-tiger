@@ -13,137 +13,121 @@ constexpr int maxlen = 1024;
 
 namespace cg {
 
-void CodeGen::PushRegOnStack(assem::InstrList &instr_list, temp::Temp *reg) {
-  frame_->offset_ -= reg_manager->WordSize();
-  instr_list.Append(new assem::OperInstr(
-      "subq $" + std::to_string(reg_manager->WordSize()) + ", `d0",
-      new temp::TempList(reg_manager->StackPointer()), nullptr, nullptr));
-  instr_list.Append(new assem::OperInstr(
-      "movq `s0, (`d0)", new temp::TempList(reg_manager->StackPointer()),
+void CodeGen::PushRegOnStack(assem::InstrList &list, temp::Temp *reg) {
+  //生成函数调用保存寄存器现场代码，保护寄存器值。
+  auto sp = reg_manager->StackPointer();
+  int word_size = reg_manager->WordSize();
+
+  frame_->offset_ -= word_size;
+
+  list.Append(new assem::OperInstr(
+      "subq $" + std::to_string(word_size) + ", `d0",
+      new temp::TempList(sp), nullptr, nullptr));
+
+  list.Append(new assem::OperInstr(
+      "movq `s0, (`d0)", new temp::TempList(sp),
       new temp::TempList(reg), nullptr));
 }
 
-void CodeGen::PopRegFromStack(assem::InstrList &instr_list, temp::Temp *reg) {
-  instr_list.Append(new assem::OperInstr(
+void CodeGen::PopRegFromStack(assem::InstrList &list, temp::Temp *reg) {
+  //生成函数调用保存寄存器现场代码，保护寄存器值。
+  auto sp = reg_manager->StackPointer();
+  int word_size = reg_manager->WordSize();
+
+  list.Append(new assem::OperInstr(
       "movq (`s0), `d0", new temp::TempList(reg),
-      new temp::TempList(reg_manager->StackPointer()), nullptr));
-  instr_list.Append(new assem::OperInstr(
-      "addq $" + std::to_string(reg_manager->WordSize()) + ", `d0",
-      new temp::TempList(reg_manager->StackPointer()), nullptr, nullptr));
+      new temp::TempList(sp), nullptr));
+
+  list.Append(new assem::OperInstr(
+      "addq $" + std::to_string(word_size) + ", `d0",
+      new temp::TempList(sp), nullptr, nullptr));
 }
 
-void CodeGen::PushRegToPos(assem::InstrList &instr_list, temp::Temp *pos,
-                           temp::Temp *to_be_push) {
-  frame_->offset_ -= reg_manager->WordSize();
-  instr_list.Append(new assem::OperInstr(
-      "subq $" + std::to_string(reg_manager->WordSize()) + ", `d0",
+void CodeGen::PushRegToPos(assem::InstrList &list, temp::Temp *pos, temp::Temp *val) {
+  //使用的是pos指向的寄存器（比如栈指针）
+  int size = reg_manager->WordSize();
+  frame_->offset_ -= size;
+
+  list.Append(new assem::OperInstr(
+      "subq $" + std::to_string(size) + ", `d0",
       new temp::TempList(pos), nullptr, nullptr));
-  instr_list.Append(
-      new assem::OperInstr("movq `s0, (`d0)", new temp::TempList(pos),
-                           new temp::TempList(to_be_push), nullptr));
+
+  list.Append(new assem::OperInstr(
+      "movq `s0, (`d0)",
+      new temp::TempList(pos),
+      new temp::TempList(val), nullptr));
 }
 
-void CodeGen::PopRegFromPos(assem::InstrList &instr_list, temp::Temp *pos,
-                            temp::Temp *to_be_pop) {
-  instr_list.Append(new assem::OperInstr(
-      "subq $" + std::to_string(reg_manager->WordSize()) + ", `d0",
+void CodeGen::PopRegFromPos(assem::InstrList &list, temp::Temp *pos, temp::Temp *dst) {
+  //从pos指向的栈位置弹出值到寄存器dst
+  int size = reg_manager->WordSize();
+
+  list.Append(new assem::OperInstr(
+      "subq $" + std::to_string(size) + ", `d0",
       new temp::TempList(pos), nullptr, nullptr));
-  instr_list.Append(new assem::OperInstr("movq (`s0), `d0",
-                                         new temp::TempList(to_be_pop),
-                                         new temp::TempList(pos), nullptr));
+
+  list.Append(new assem::OperInstr(
+      "movq (`s0), `d0",
+      new temp::TempList(dst),
+      new temp::TempList(pos), nullptr));
 }
 
+//主代码生成入口，遍历中间代码stmts，
+//调用每条语句的Munch方法生成汇编指令，并封装成ProcEntryExit2的函数体。
 void CodeGen::Codegen() {
-  fs_ = frame_->GetFrameLabel() + "_framesize"; // // Frame size label_
-  auto instr_list = new assem::InstrList();
+  auto &stmts = traces_->GetStmList()->GetList();
+  auto ilist = new assem::InstrList();
 
-//    // Save callee-saved registers
-//    auto pos = reg_manager->GetRegister(frame::X64RegManager::X64Reg::RAX);
-//    instr_list->Append(new assem::OperInstr("leaq " + fs_ + "(%rsp), `d0",
-//                                            new temp::TempList(pos), nullptr,
-//                                            nullptr));
-//    instr_list->Append(
-//        new assem::OperInstr("addq $" + std::to_string(frame_->offset_) + ",`d0",
-//                             new temp::TempList(pos), nullptr, nullptr));
-//    for (auto callee_save_reg : reg_manager->CalleeSaves()->GetList()) {
-//      PushRegToPos(*instr_list, pos, callee_save_reg);
-//    }
+  fs_ = frame_->GetFrameLabel() + "_framesize";
 
-  // Init FP with SP
-  // FP = SP + fs
-  //  instr_list->Append(new assem::OperInstr(
-  //      "leaq " + fs_ + "(`s0), `d0",
-  //      new temp::TempList(reg_manager->FramePointer()),
-  //      new temp::TempList(reg_manager->StackPointer()), nullptr));
+  for (auto stmt : stmts)
+    stmt->Munch(*ilist, fs_);
 
-  // Munch
-  for (auto stm : traces_->GetStmList()->GetList()) {
-    stm->Munch(*instr_list, fs_);
-  }
-
-//    // Restore callee-saved registers
-//    auto pos_rbx =
-//    reg_manager->GetRegister(frame::X64RegManager::X64Reg::RBX); auto li =
-//    reg_manager->CalleeSaves()->GetList(); instr_list->Append(new
-//    assem::OperInstr("leaq " + fs_ + "(%rsp), `d0",
-//                                            new temp::TempList(pos_rbx),
-//                                            nullptr, nullptr));
-//    instr_list->Append(new assem::OperInstr(
-//        "addq $" +
-//            std::to_string(frame_->offset_ +
-//                           li.size() * reg_manager->WordSize()) +
-//            ", `d0",
-//        new temp::TempList(pos_rbx), nullptr, nullptr));
-//    for (auto callee_save_reg : li) {
-//      PopRegFromPos(*instr_list, pos_rbx, callee_save_reg);
-//    }
-
-  assem_instr_ =
-      std::make_unique<AssemInstr>(frame::ProcEntryExit2(instr_list));
+  assem_instr_ = std::make_unique<AssemInstr>(frame::ProcEntryExit2(ilist));
 }
 
 void AssemInstr::Print(FILE *out, temp::Map *map) const {
-  for (auto instr : instr_list_->GetList())
-    instr->Print(out, map);
-  fprintf(out, "\n");
+  for (auto *inst : instr_list_->GetList())
+    inst->Print(out, map);
+  fputc('\n', out);
 }
 
-temp::TempList *MunchOperand(tree::Exp *exp, OperandRole role,
-                             std::string &assem, assem::InstrList &instr_list,
+temp::TempList *MunchOperand(tree::Exp *e, OperandRole role,
+                             std::string &assem, assem::InstrList &list,
                              std::string_view fs) {
-  if (typeid(*exp) == typeid(tree::ConstExp)) {
-    // imm
-    assem =
-        "$" + std::to_string(static_cast<const tree::ConstExp *>(exp)->consti_);
+  if (auto c = dynamic_cast<const tree::ConstExp *>(e)) {
+    assem = "$" + std::to_string(c->consti_);
     return new temp::TempList();
   }
-  if (typeid(*exp) == typeid(tree::MemExp)) {
-    // mem
+
+  if (auto mem = dynamic_cast<const tree::MemExp *>(e)) {
+    tree::Exp *addr = mem->exp_;
     assem = role == SRC ? "(`s0)" : "(`d0)";
-    tree::Exp *addr = static_cast<const tree::MemExp *>(exp)->exp_;
-    if (typeid(*addr) == typeid(tree::BinopExp)) {
-      // check if format of address is reg + const
-      tree::BinopExp *binop_exp = static_cast<tree::BinopExp *>(addr);
-      tree::Exp *left = binop_exp->left_, *right = binop_exp->right_;
-      // IMM(%REG)
-      if (typeid(*left) == typeid(tree::ConstExp)) {
-        int offset = static_cast<const tree::ConstExp *>(left)->consti_;
-        assem = std::to_string(offset) + assem;
-        return new temp::TempList(right->Munch(instr_list, fs));
+
+    if (auto binop = dynamic_cast<tree::BinopExp *>(addr)) {
+      tree::Exp *l = binop->left_, *r = binop->right_;
+
+      if (auto lc = dynamic_cast<const tree::ConstExp *>(l)) {
+        assem = std::to_string(lc->consti_) + assem;
+        return new temp::TempList(r->Munch(list, fs));
       }
-      if (typeid(*right) == typeid(tree::ConstExp)) {
-        int offset = static_cast<const tree::ConstExp *>(right)->consti_;
-        assem = std::to_string(offset) + assem;
-        return new temp::TempList(left->Munch(instr_list, fs));
+
+      if (auto rc = dynamic_cast<const tree::ConstExp *>(r)) {
+        assem = std::to_string(rc->consti_) + assem;
+        return new temp::TempList(l->Munch(list, fs));
       }
     }
-    return new temp::TempList(addr->Munch(instr_list, fs));
+
+    return new temp::TempList(addr->Munch(list, fs));
   }
-  // reg
-  assem = role == SRC ? "`s0" : "`d0";
-  return new temp::TempList(exp->Munch(instr_list, fs));
+
+  // fallback: register
+  assem = (role == SRC) ? "`s0" : "`d0";
+  return new temp::TempList(e->Munch(list, fs));
 }
+
 } // namespace cg
+
 
 namespace tree {
 
@@ -153,183 +137,126 @@ void SeqStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
 }
 
 void LabelStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  instr_list.Append(
-      new assem::LabelInstr(temp::LabelFactory::LabelString(label_), label_));
+  instr_list.Append(new assem::LabelInstr(
+      temp::LabelFactory::LabelString(label_), label_));
 }
 
 void JumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  auto dst_label = exp_->name_->Name();
-  assem::Instr *instr = new assem::OperInstr(
-      "jmp " + dst_label, nullptr, nullptr, new assem::Targets(jumps_));
-  instr_list.Append(instr);
+  auto target = exp_->name_->Name();
+  instr_list.Append(new assem::OperInstr(
+      "jmp " + target, nullptr, nullptr, new assem::Targets(jumps_)));
 }
 
 void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  temp::Temp *left = left_->Munch(instr_list, fs);
-  temp::Temp *right = right_->Munch(instr_list, fs);
-  // s0 - s1 (left - right)
+  auto *lhs = left_->Munch(instr_list, fs);
+  auto *rhs = right_->Munch(instr_list, fs);
+
   instr_list.Append(new assem::OperInstr(
-      "cmpq `s1, `s0", nullptr, new temp::TempList({left, right}), nullptr));
-  std::string cjump_instr;
-  switch (op_) {
-  case EQ_OP:
-    cjump_instr = "je";
-    break;
-  case NE_OP:
-    cjump_instr = "jne";
-    break;
-  case LT_OP:
-    cjump_instr = "jl";
-    break;
-  case GT_OP:
-    cjump_instr = "jg";
-    break;
-  case LE_OP:
-    cjump_instr = "jle";
-    break;
-  case GE_OP:
-    cjump_instr = "jge";
-    break;
-  case ULT_OP:
-    cjump_instr = "jnb";
-    break;
-  case ULE_OP:
-    cjump_instr = "jnbe";
-    break;
-  case UGT_OP:
-    cjump_instr = "jna";
-    break;
-  case UGE_OP:
-    cjump_instr = "jnae";
-    break;
-  case REL_OPER_COUNT:
-  default:
-    assert(0);
-  }
-  instr_list.Append(
-      new assem::OperInstr(cjump_instr + " `j0", nullptr, nullptr,
-                           new assem::Targets(new std::vector<temp::Label *>{
-                               true_label_, false_label_})));
+      "cmpq `s1, `s0", nullptr, new temp::TempList({lhs, rhs}), nullptr));
+
+  static const std::unordered_map<RelOp, std::string> relop_mnemonics = {
+      {EQ_OP, "je"},   {NE_OP, "jne"}, {LT_OP, "jl"},   {GT_OP, "jg"},
+      {LE_OP, "jle"},  {GE_OP, "jge"}, {ULT_OP, "jnb"}, {ULE_OP, "jnbe"},
+      {UGT_OP, "jna"}, {UGE_OP, "jnae"}};
+
+  auto it = relop_mnemonics.find(op_);
+  assert(it != relop_mnemonics.end() && "Unknown RelOp in CjumpStm");
+
+  instr_list.Append(new assem::OperInstr(
+      it->second + " `j0", nullptr, nullptr,
+      new assem::Targets(new std::vector<temp::Label *>{
+          true_label_, false_label_})));
 }
 
+
 void MoveStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  temp::Temp *src = src_->Munch(instr_list, fs);
+  temp::Temp *src = src_->Munch(instr_list, fs); // IR 表达式翻译成目标汇编中的某个寄存器，并把生成的指令加入 instr_list
+
   if (typeid(*dst_) == typeid(tree::MemExp)) {
-    // deal with dst is mem
-    // directly move to mem
-    temp::Temp *dst = ((MemExp *)dst_)->exp_->Munch(instr_list, fs);
+    auto *mem_dst = static_cast<tree::MemExp *>(dst_);
+    temp::Temp *addr = mem_dst->exp_->Munch(instr_list, fs);
+
     instr_list.Append(new assem::OperInstr(
-        "movq `s0, (`s1)", nullptr, new temp::TempList({src, dst}), nullptr));
+        "movq `s0, (`s1)",
+        nullptr,
+        new temp::TempList({src, addr}),
+        nullptr));
   } else {
-    // dst is reg
-    // if src is mem exp, src_->Munch will deal with this
     temp::Temp *dst = dst_->Munch(instr_list, fs);
     instr_list.Append(new assem::MoveInstr(
-        "movq `s0, `d0", new temp::TempList({dst}), new temp::TempList({src})));
+        "movq `s0, `d0",
+        new temp::TempList({dst}),
+        new temp::TempList({src})));
   }
 }
+
+
 
 void ExpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
   exp_->Munch(instr_list, fs);
 }
 
 temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  temp::Temp *result = nullptr;
-  std::string op_instr;
-  switch (op_) {
-  case PLUS_OP:
-    op_instr = "addq";
-    break;
-  case MINUS_OP:
-    op_instr = "subq";
-    break;
-  case MUL_OP:
-    op_instr = "imulq";
-    break;
-  case DIV_OP:
-    op_instr = "idivq";
-    break;
-  case AND_OP:
-    op_instr = "andq";
-    break;
-  case OR_OP:
-    op_instr = "orq";
-    break;
-  case LSHIFT_OP:
-    op_instr = "salq";
-    break;
-  case RSHIFT_OP:
-    op_instr = "shrq";
-    break;
-  case ARSHIFT_OP:
-    op_instr = "sarq";
-    break;
-  case XOR_OP:
-    op_instr = "xorq";
-    break;
-  case BIN_OPER_COUNT:
-  default:
-    assert(0);
-  }
+  static const std::unordered_map<BinOp, std::string> binop_instr_map = {
+      {PLUS_OP,    "addq"},
+      {MINUS_OP,   "subq"},
+      {AND_OP,     "andq"},
+      {OR_OP,      "orq"},
+      {LSHIFT_OP,  "salq"},
+      {RSHIFT_OP,  "shrq"},
+      {ARSHIFT_OP, "sarq"},
+      {XOR_OP,     "xorq"},
+  };
 
   temp::Temp *rax = reg_manager->GetRegister(frame::X64RegManager::X64Reg::RAX);
   temp::Temp *rdx = reg_manager->GetRegister(frame::X64RegManager::X64Reg::RDX);
 
-  if (op_ == BinOp::DIV_OP) {
+  // 特殊处理 DIV
+  if (op_ == DIV_OP) {
     temp::Temp *reg = temp::TempFactory::NewTemp();
+    temp::Temp *lhs = left_->Munch(instr_list, fs);
+    temp::Temp *rhs = right_->Munch(instr_list, fs);
 
-    // idivq S
-    // R[%rdx] <- R[%rdx]:R[%rax] mod S
-    // R[%rax] <- R[%rdx]:R[%rax] / S
-    instr_list.Append(
-        new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rax),
-                             new temp::TempList(left_->Munch(instr_list, fs))));
-    instr_list.Append(new assem::OperInstr("cqto",
-                                           new temp::TempList({rax, rdx}),
-                                           new temp::TempList(rax), nullptr));
-    instr_list.Append(new assem::OperInstr(
-        "idivq `s0", new temp::TempList({rax, rdx}),
-        new temp::TempList({right_->Munch(instr_list, fs), rax, rdx}), nullptr));
-    instr_list.Append(new assem::MoveInstr(
-        "movq `s0, `d0", new temp::TempList(reg), new temp::TempList(rax)));
-    return reg;
-  }
-  if (op_ == BinOp::MUL_OP) {
-    temp::Temp *reg = temp::TempFactory::NewTemp();
-    // imulq S
-    // R[%rdx]:R[%rax] <- S * R[%rax]
-    instr_list.Append(
-        new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rax),
-                             new temp::TempList(left_->Munch(instr_list, fs))));
-    instr_list.Append(new assem::OperInstr(
-        "imulq `s0", new temp::TempList({rax, rdx}),
-        new temp::TempList({right_->Munch(instr_list, fs), rax}), nullptr));
-    instr_list.Append(new assem::MoveInstr(
-        "movq `s0, `d0", new temp::TempList(reg), new temp::TempList(rax)));
+    instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rax), new temp::TempList(lhs)));
+    instr_list.Append(new assem::OperInstr("cqto", new temp::TempList({rax, rdx}), new temp::TempList(rax), nullptr));
+    instr_list.Append(new assem::OperInstr("idivq `s0", new temp::TempList({rax, rdx}), new temp::TempList({rhs, rax, rdx}), nullptr));
+    instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(reg), new temp::TempList(rax)));
     return reg;
   }
 
-  std::stringstream assem;
-  std::string leftAssem, rightAssem;
-  temp::TempList *left =
-      cg::MunchOperand(left_, cg::OperandRole::SRC, leftAssem, instr_list, fs);
-  temp::TempList *right = cg::MunchOperand(right_, cg::OperandRole::SRC,
-                                           rightAssem, instr_list, fs);
-  result = temp::TempFactory::NewTemp();
+  // 特殊处理 MUL
+  if (op_ == MUL_OP) {
+    temp::Temp *reg = temp::TempFactory::NewTemp();
+    temp::Temp *lhs = left_->Munch(instr_list, fs);
+    temp::Temp *rhs = right_->Munch(instr_list, fs);
 
-  // Move an operand into register
-  // Destination is also used as a operand
+    instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rax), new temp::TempList(lhs)));
+    instr_list.Append(new assem::OperInstr("imulq `s0", new temp::TempList({rax, rdx}), new temp::TempList({rhs, rax}), nullptr));
+    instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(reg), new temp::TempList(rax)));
+    return reg;
+  }
+
+  // 一般二元运算（左值 mov 到目标寄存器，再执行 op 指令）
+  auto it = binop_instr_map.find(op_);
+  assert(it != binop_instr_map.end());  // 相当于 switch default 中 assert(0)
+
+  std::string op_instr = it->second;
+  std::string left_assem, right_assem;
+  temp::TempList *left = cg::MunchOperand(left_, cg::OperandRole::SRC, left_assem, instr_list, fs);
+  temp::TempList *right = cg::MunchOperand(right_, cg::OperandRole::SRC, right_assem, instr_list, fs);
+  temp::Temp *result = temp::TempFactory::NewTemp();
+
+  // 目标寄存器也作为操作数右侧
   right->Append(result);
   temp::TempList *dst = new temp::TempList(result);
-  assem << "movq " << leftAssem << ", `d0";
+
   if (typeid(*left_) == typeid(tree::MemExp)) {
-    instr_list.Append(new assem::OperInstr(assem.str(), dst, left, nullptr));
+    instr_list.Append(new assem::OperInstr("movq " + left_assem + ", `d0", dst, left, nullptr));
   } else {
-    instr_list.Append(new assem::MoveInstr(assem.str(), dst, left));
+    instr_list.Append(new assem::MoveInstr("movq " + left_assem + ", `d0", dst, left));
   }
-  assem.str("");
-  assem << op_instr << ' ' << rightAssem << ", `d0";
-  instr_list.Append(new assem::OperInstr(assem.str(), dst, right, nullptr));
+
+  instr_list.Append(new assem::OperInstr(op_instr + " " + right_assem + ", `d0", dst, right, nullptr));
   return result;
 }
 
@@ -343,20 +270,25 @@ temp::Temp *MemExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   return reg;
 }
 
-temp::Temp *TempExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  if (temp_ != reg_manager->FramePointer()) {
+temp::Temp *TempExp::Munch(assem::InstrList &instr_list, std::string_view frame_offset) {
+  auto *fp_temp = reg_manager->FramePointer();
+  if (temp_ != fp_temp) {
     return temp_;
   }
 
-  // modify FP to SP + frame_size since we do not have FP
-  temp::Temp *fp = temp::TempFactory::NewTemp();
-  std::stringstream assem;
-  assem << "leaq " << fs << "(`s0), `d0";
+  // 没有真实的帧指针，改用栈指针加偏移替代
+  temp::Temp *result_temp = temp::TempFactory::NewTemp();
+
+  std::string instruction = "leaq " + std::string(frame_offset) + "(`s0), `d0";
   instr_list.Append(new assem::OperInstr(
-      assem.str(), new temp::TempList(fp),
-      new temp::TempList(reg_manager->StackPointer()), nullptr));
-  return fp;
+      instruction,
+      new temp::TempList(result_temp),
+      new temp::TempList(reg_manager->StackPointer()),
+      nullptr));
+
+  return result_temp;
 }
+
 
 temp::Temp *EseqExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   stm_->Munch(instr_list, fs);
@@ -381,66 +313,81 @@ temp::Temp *ConstExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   return dst;
 }
 
-temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  /* TODO: Put your lab5 code here */
-  // prepare arguments
-  // should be listed as “sources” of the instruction
-  temp::TempList *arg_regs = args_->MunchArgs(instr_list, fs);
+temp::Temp *CallExp::Munch(assem::InstrList &instr_list, std::string_view frame_offset) {
+  // 生成参数传递代码，获得传递的寄存器列表
+  temp::TempList *arg_regs = args_->MunchArgs(instr_list, frame_offset);
 
-  // CALL instruction will trash caller saved registers
-  // specifies these registers and as “destinations” of the call
+  // 生成CALL指令，调用函数名
+  std::string func_name = static_cast<NameExp *>(fun_)->name_->Name();
   instr_list.Append(new assem::OperInstr(
-      "callq " + (static_cast<NameExp *>(fun_))->name_->Name(),
-      reg_manager->CallerSaves(), arg_regs, nullptr));
-  // get return value
+      "callq " + func_name,
+      reg_manager->CallerSaves(),  // CALL指令会破坏这些寄存器
+      arg_regs,
+      nullptr));
+
+  // 分配一个临时保存函数返回值
   temp::Temp *return_temp = temp::TempFactory::NewTemp();
-  instr_list.Append(
-      new assem::MoveInstr("movq `s0, `d0", new temp::TempList(return_temp),
-                           new temp::TempList(reg_manager->ReturnValue())));
-  // reset sp when existing arguments passed on the stack
-  int arg_reg_num = reg_manager->ArgRegs()->GetList().size();
-  int arg_stack_num = std::max(int(args_->GetList().size()) - arg_reg_num, 0);
-  if (arg_stack_num > 0) {
+
+  // 将返回值寄存器的值移到return_temp中
+  instr_list.Append(new assem::MoveInstr(
+      "movq `s0, `d0",
+      new temp::TempList(return_temp),
+      new temp::TempList(reg_manager->ReturnValue())));
+
+  // 栈上参数需要恢复栈指针
+  const int arg_regs_count = reg_manager->ArgRegs()->GetList().size();
+  int total_args_count = static_cast<int>(args_->GetList().size());
+  int stack_args_count = std::max(total_args_count - arg_regs_count, 0);
+
+  if (stack_args_count > 0) {
+    int stack_bytes = stack_args_count * reg_manager->WordSize();
     instr_list.Append(new assem::OperInstr(
-        "addq $" + std::to_string(arg_stack_num * reg_manager->WordSize()) +
-            ", `d0",
-        new temp::TempList(reg_manager->StackPointer()), nullptr, nullptr));
+        "addq $" + std::to_string(stack_bytes) + ", `d0",
+        new temp::TempList(reg_manager->StackPointer()),
+        nullptr,
+        nullptr));
   }
+
   return return_temp;
 }
 
-temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list,
-                                   std::string_view fs) {
-  // ExpList::MunchArgs generates code to move all the arguments to their
-  // correct position
-  // MunchArgs(il) will iterate exp_list for all arguments , generate
-  // corresponding assem to move them all
+
+temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list, std::string_view frame_offset) {
+  // 用于保存传递参数使用的寄存器列表
   temp::TempList *arg_regs = new temp::TempList();
-  int arg_idx = 0;
-  int arg_reg_num = reg_manager->ArgRegs()->GetList().size();
-  for (Exp *exp : exp_list_) {
-    temp::Temp *src = exp->Munch(instr_list, fs);
-    if (arg_idx < arg_reg_num) {
-      // pass in reg
-      temp::Temp *reg = reg_manager->ArgRegs()->NthTemp(arg_idx);
+
+  const int reg_arg_count = reg_manager->ArgRegs()->GetList().size();
+  int idx = 0;
+
+  for (Exp *arg_exp : exp_list_) {
+    temp::Temp *src_temp = arg_exp->Munch(instr_list, frame_offset);
+
+    if (idx < reg_arg_count) {
+      // 使用寄存器传参
+      temp::Temp *arg_reg = reg_manager->ArgRegs()->NthTemp(idx);
       instr_list.Append(new assem::MoveInstr(
-          "movq `s0, `d0", new temp::TempList(reg), new temp::TempList(src)));
-      arg_regs->Append(reg);
+          "movq `s0, `d0",
+          new temp::TempList(arg_reg),
+          new temp::TempList(src_temp)));
+      arg_regs->Append(arg_reg);
     } else {
-      // pass on stack
-      // pushq (subq wordsize fo SP, then mov to SP)
+      // 栈上传参，先调整栈指针，再存值
       instr_list.Append(new assem::OperInstr(
           "subq $" + std::to_string(reg_manager->WordSize()) + ", `d0",
-          new temp::TempList(reg_manager->StackPointer()), nullptr, nullptr));
+          new temp::TempList(reg_manager->StackPointer()),
+          nullptr,
+          nullptr));
       instr_list.Append(new assem::OperInstr(
-          "movq `s0, (`d0)", new temp::TempList(reg_manager->StackPointer()),
-          new temp::TempList(src), nullptr));
+          "movq `s0, (`d0)",
+          new temp::TempList(reg_manager->StackPointer()),
+          new temp::TempList(src_temp),
+          nullptr));
     }
-    ++arg_idx;
+    ++idx;
   }
-  // returns a list of all the temporaries that are to be passed to the
-  // machine’s call instructions
+
   return arg_regs;
 }
+
 
 } // namespace tree

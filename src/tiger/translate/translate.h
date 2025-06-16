@@ -10,25 +10,13 @@
 #include "tiger/frame/frame.h"
 #include "tiger/semant/types.h"
 
-//#define DEBUG_TRANSLATION
-
-#ifdef DEBUG_TRANSLATION
-#define DBG(format, ...) fprintf(stderr, \
-"[DEBUG](%s, %s(), Line %d): " \
-, __FILE__, __PRETTY_FUNCTION__, __LINE__);     \
-fprintf(stderr, format"\r\n", ##__VA_ARGS__)
-#else
-#define DBG(format, ...)  do {} while (0)
-#endif
-
-
 namespace tr {
 
 class Exp;
 class ExpAndTy;
 class Level;
 
-class PatchList {
+class PatchList { //处理跳转指令中未确定目标的标签列表
 public:
   void DoPatch(temp::Label *label) {
     for (auto &patch : patch_list_)
@@ -55,23 +43,21 @@ private:
   std::list<temp::Label **> patch_list_;
 };
 
-// encapsulate frame::Access
-// how to access each var (in frame or reg)
+//封装变量的访问方式（存在栈帧中，还是寄存器中）
 class Access {
 public:
-  Level *level_;  // level of var
-  frame::Access *access_;  // access to var
+  Level *level_;  
+  frame::Access *access_; 
 
   Access(Level *level, frame::Access *access)
       : level_(level), access_(access) {}
 
   static Access *AllocLocal(Level *level, bool escape);
 
-  // get the exp to access the variable, consider static links
   tree::Exp *ToExp(Level *currentLevel);
 };
 
-// encapsulate frame::Frame
+// 表示静态嵌套函数的层级结构。
 class Level {
 public:
   frame::Frame *frame_;
@@ -87,6 +73,7 @@ public:
   tree::Exp *StaticLink(Level *targetLevel);
 };
 
+//翻译主类
 class ProgTr {
 public:
   // TODO: Put your lab5 code here */
@@ -96,15 +83,8 @@ public:
         tenv_(std::make_unique<env::TEnv>()),
         venv_(std::make_unique<env::VEnv>()){};
 
-  /**
-   * Translate IR tree
-   */
   void Translate();
 
-  /**
-   * Transfer the ownership of errormsg to outer scope
-   * @return unique pointer to errormsg
-   */
   std::unique_ptr<err::ErrorMsg> TransferErrormsg() {
     return std::move(errormsg_);
   }
@@ -116,7 +96,6 @@ private:
   std::unique_ptr<env::TEnv> tenv_;
   std::unique_ptr<env::VEnv> venv_;
 
-  // Fill base symbol for var env and type env
   void FillBaseVEnv();
   void FillBaseTEnv();
 };

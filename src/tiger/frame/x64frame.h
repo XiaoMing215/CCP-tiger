@@ -1,7 +1,3 @@
-//
-// Created by wzl on 2021/10/12.
-//
-
 #ifndef TIGER_COMPILER_X64FRAME_H
 #define TIGER_COMPILER_X64FRAME_H
 
@@ -38,78 +34,40 @@ public:
 public:
   X64RegManager();
 
-  /**
-   * Get general-purpose registers except RSI
-   * NOTE: returned temp list should be in the order of calling convention
-   * @return general-purpose registers
-   */
   temp::TempList *Registers();
-
-  /**
-   * Get registers which can be used to hold arguments
-   * NOTE: returned temp list must be in the order of calling convention
-   * @return argument registers
-   */
   temp::TempList *ArgRegs();
-
-  /**
-   * Get caller-saved registers
-   * NOTE: returned registers must be in the order of calling convention
-   * @return caller-saved registers
-   */
   temp::TempList *CallerSaves();
-
-  /**
-   * Get callee-saved registers
-   * NOTE: returned registers must be in the order of calling convention
-   * @return callee-saved registers
-   */
   temp::TempList *CalleeSaves();
-
-  /**
-   * Get return-sink registers
-   * @return return-sink registers
-   */
   temp::TempList *ReturnSink();
-
-  /**
-   * Get word size
-   */
   int WordSize();
-
   temp::Temp *FramePointer();
-
   temp::Temp *StackPointer();
-
   temp::Temp *ReturnValue();
 };
 
 /* TODO: Put your lab5 code here */
-// visiting var in frame
-class InFrameAccess : public Access {
+class InFrameAccess : public Access { //表示变量不放在寄存器里
 public:
   int offset;
 
   explicit InFrameAccess(int offset) : offset(offset) {}
   /* TODO: Put your lab5 code here */
 
-  // return off(fp) (for visiting var on stack)
-  tree::Exp *ToExp(tree::Exp *framePtr) const override;
+  tree::Exp *ToExp(tree::Exp *framePtr) const override;  //返回形如 Mem(BinOp(PLUS, framePtr, offset)) 的树
 };
 
-// visiting var in reg
-class InRegAccess : public Access {
+class InRegAccess : public Access { //变量存在寄存器中
 public:
-  temp::Temp *reg; // Temp is a data structure represents virtual registers
+  temp::Temp *reg; 
   explicit InRegAccess(temp::Temp *reg) : reg(reg) {}
   /* TODO: Put your lab5 code here */
-  tree::Exp *ToExp(tree::Exp *framePtr) const override;
+  tree::Exp *ToExp(tree::Exp *framePtr) const override; //直接返回 Temp(reg)
 };
 
 class X64Frame : public Frame {
   /* TODO: Put your lab5 code here */
 public:
-  X64Frame(temp::Label *name, std::list<bool> formals);
+  X64Frame(temp::Label *name, std::list<bool> formals);//formals表示每个参数是否可能逃逸
   int AllocLocal();
   std::list<frame::Access *> *Formals();
   int Size() override;

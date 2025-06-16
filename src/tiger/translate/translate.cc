@@ -15,16 +15,15 @@ namespace tr {
 
 Access *Access::AllocLocal(Level *level, bool escape) {
   return new Access(level, frame::Access::AllocLocal(level->frame_, escape));
-}
+} //外层的 Access 类是对 frame::Access 的包装 判断的内容放在了frame access当中
 
 tree::Exp *Access::ToExp(Level *currentLevel) {
-  // get the exp to access the variable, consider static links
-  // get framePtr of the frame where var in
+  //需要从当前帧通过一连串的静态链（static link）回溯
   tree::Exp *framePtr = currentLevel->StaticLink(level_);
   return access_->ToExp(framePtr);
 }
 
-class Cx {
+class Cx { //条件表达式的补丁表示
 public:
   PatchList trues_;
   PatchList falses_;
@@ -34,11 +33,11 @@ public:
       : trues_(trues), falses_(falses), stm_(stm) {}
 };
 
-class Exp {
+class Exp { //三个转化接口
 public:
-  [[nodiscard]] virtual tree::Exp *UnEx() = 0;
-  [[nodiscard]] virtual tree::Stm *UnNx() = 0;
-  [[nodiscard]] virtual Cx UnCx(err::ErrorMsg *errormsg) = 0;
+  [[nodiscard]] virtual tree::Exp *UnEx() = 0; //表达式翻译为有值表达式
+  [[nodiscard]] virtual tree::Stm *UnNx() = 0; //表达式翻译为语句（无值）
+  [[nodiscard]] virtual Cx UnCx(err::ErrorMsg *errormsg) = 0; //表达式翻译为控制流布尔条件
 };
 
 class ExpAndTy {
@@ -49,7 +48,7 @@ public:
   ExpAndTy(tr::Exp *exp, type::Ty *ty) : exp_(exp), ty_(ty) {}
 };
 
-class ExExp : public Exp {
+class ExExp : public Exp { //代表一个有值的表达式
 public:
   tree::Exp *exp_;
 
@@ -63,17 +62,17 @@ public:
     /* TODO: Put your lab5 code here */
     return new tree::ExpStm(exp_);
   }
-  [[nodiscard]] Cx UnCx(err::ErrorMsg *errormsg) override {
+  [[nodiscard]] Cx UnCx(err::ErrorMsg *errormsg) override { //exp2bool
     /* TODO: Put your lab5 code here */
     tree::CjumpStm *stm = new tree::CjumpStm(
-        tree::NE_OP, exp_, new tree::ConstExp(0), nullptr, nullptr);
+        tree::NE_OP, exp_, new tree::ConstExp(0), nullptr, nullptr); //先空跳转
     std::list<temp::Label **> true_patch_list{&(stm->true_label_)};
     std::list<temp::Label **> false_patch_list{&(stm->false_label_)};
     return {PatchList(true_patch_list), PatchList(false_patch_list), stm};
   }
 };
 
-class NxExp : public Exp {
+class NxExp : public Exp { //没有值的语句
 public:
   tree::Stm *stm_;
 
@@ -89,27 +88,38 @@ public:
   }
   [[nodiscard]] Cx UnCx(err::ErrorMsg *errormsg) override {
     /* TODO: Put your lab5 code here */
-    // For UnCX should never expect to see a tr::NxExp kind
+    // 这是不应该存在的分支
     assert(0);
   }
 };
 
-class CxExp : public Exp {
+class CxExp : public Exp { //布尔表达式的控制流表示
 public:
   Cx cx_;
 
   CxExp(PatchList trues, PatchList falses, tree::Stm *stm)
       : cx_(trues, falses, stm) {}
-
+  //此处的跳转还是空的
   [[nodiscard]] tree::Exp *UnEx() override {
     /* TODO: Put your lab5 code here */
+    //把一个布尔控制流表达式（CxExp）转换成一个有值表达式（返回 1 或 0）
+    /*
+    Temp r;
+    r := 1;
+    if (cond) goto t else goto f;
+    f:
+      r := 0;
+    t:
+      return r;
+    */
     temp::Temp *r = temp::TempFactory::NewTemp();
     temp::Label *t = temp::LabelFactory::NewLabel();
     temp::Label *f = temp::LabelFactory::NewLabel();
+    //把布尔表达式中“还不知道跳哪儿”的地方，补上真正要跳的标签
     cx_.trues_.DoPatch(t);
     cx_.falses_.DoPatch(f);
     return new tree::EseqExp(
-        new tree::MoveStm(new tree::TempExp(r), new tree::ConstExp(1)),
+        new tree::MoveStm(new tree::TempExp(r), new tree::ConstExp(1)),//先将结果寄存器 r 置为 1，即假设布尔表达式为真。
         new tree::EseqExp(
             cx_.stm_,
             new tree::EseqExp(
@@ -136,12 +146,14 @@ void ProgTr::Translate() {
   /* TODO: Put your lab5 code here */
   temp::Label *main_label_ = temp::LabelFactory::NamedLabel("tigermain");
   main_level_ =
-      std::make_unique<Level>(nullptr, main_label_, std::list<bool>());
+      std::make_unique<Level>(nullptr, main_label_, std::list<bool>()); //调用的是 Level 的构造函数
 
   tr::ExpAndTy *main =
       absyn_tree_->Translate(venv_.get(), tenv_.get(), main_level_.get(),
                              main_label_, errormsg_.get());
   frags->PushBack(new frame::ProcFrag(main->exp_->UnNx(), main_level_->frame_));
+//ProcFrag 是一个过程片段，表示“某个函数的语义内容”。
+
 }
 
 static tr::ExExp *getVoidExp() { return new tr::ExExp(new tree::ConstExp(0)); }
@@ -160,10 +172,9 @@ static tree::ExpStm *getVoidStm() {
   return new tree::ExpStm(new tree::ConstExp(0));
 }
 
-// Static link: A frame pointer passed as the first parameter to callee
-tree::Exp *Level::StaticLink(Level *targetLevel) {
+tree::Exp *Level::StaticLink(Level *targetLevel) { //通过链找到目标所在的level
   Level *currentLevel = this;
-  tree::Exp *framePtr = new tree::TempExp(reg_manager->FramePointer());
+  tree::Exp *framePtr = new tree::TempExp(reg_manager->FramePointer());//初始化帧指针为当前函数的帧指针
   while (currentLevel && currentLevel != targetLevel) {
     framePtr = currentLevel->frame_->formals_->front()->ToExp(framePtr);
     currentLevel = currentLevel->parent_;
@@ -171,6 +182,7 @@ tree::Exp *Level::StaticLink(Level *targetLevel) {
   return framePtr;
 }
 
+//后续的 frame::Access* 包装成 tr::Access* 并放到新的列表里返回
 std::list<Access *> *Level::Formals() {
   std::list<frame::Access *> *formal_list = frame_->formals_;
   std::list<tr::Access *> *formal_list_with_level =
@@ -186,17 +198,17 @@ std::list<Access *> *Level::Formals() {
   return formal_list_with_level;
 }
 
-// tr::Level::NewLevel adds an extra element to the formal parameter list and
-// calls formals.push_front(true); NewFrame(label, formals);
 Level::Level(Level *parent, temp::Label *name, std::list<bool> formals)
     : parent_(parent) {
-  // add formal parameter for static link
-  formals.push_front(true);
-  // allocate new frame
+  formals.push_front(true);//代表给静态链（static link）预留了一个额外的参数。
   frame_ = new frame::X64Frame(name, formals);
 }
 
 } // namespace tr
+
+
+///////////////////////////////////////////////////////////////////////
+//translate大军来咯
 
 namespace absyn {
 
@@ -210,74 +222,66 @@ tr::ExpAndTy *AbsynTree::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *SimpleVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                    tr::Level *level, temp::Label *label,
                                    err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
-
-  env::EnvEntry *entry = venv->Look(sym_);
-  if (entry && typeid(*entry) == typeid(env::VarEntry)) {
-    env::VarEntry *var_entry = static_cast<env::VarEntry *>(entry);
-    tree::Exp *exp = var_entry->access_->ToExp(level);
-    return new tr::ExpAndTy(new tr::ExExp(exp), var_entry->ty_->ActualTy());
-  } else {
-    errormsg->Error(pos_, "undefined variable %s", sym_->Name().data());
+  auto entry = venv->Look(sym_);
+  if (!entry || typeid(*entry) != typeid(env::VarEntry)) {
+    errormsg->Error(pos_, "undefined variable %s", sym_->Name().c_str());
+    return tr::getVoidExpAndNilTy();
   }
-  return tr::getVoidExpAndNilTy();
+
+  auto varEntry = static_cast<env::VarEntry *>(entry);
+  auto exp = varEntry->access_->ToExp(level); //只是负责找到他被定义的地方 
+  return new tr::ExpAndTy(new tr::ExExp(exp), varEntry->ty_->ActualTy());
 }
 
 tr::ExpAndTy *FieldVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *label,
                                   err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
+  auto baseExpAndTy = var_->Translate(venv, tenv, level, label, errormsg);
+  auto baseTy = baseExpAndTy->ty_->ActualTy();
 
-  // check if var (lvalue) is record
-  tr::ExpAndTy *exp_and_ty =
-      var_->Translate(venv, tenv, level, label, errormsg);
-  type::Ty *type = exp_and_ty->ty_->ActualTy();
-  if (typeid(*type) != typeid(type::RecordTy)) {
-    errormsg->Error(pos_, "not a record type");
+  if (typeid(*baseTy) != typeid(type::RecordTy)) {
+    errormsg->Error(pos_, "expression is not a record type");
     return tr::getVoidExpAndNilTy();
   }
 
-  // check if record has this field
-  type::RecordTy *record = static_cast<type::RecordTy *>(type);
-  int idx = 0;
-  for (type::Field *field : record->fields_->GetList()) {
+  auto recordTy = static_cast<type::RecordTy *>(baseTy);
+  int offsetIndex = 0;
+  for (auto field : recordTy->fields_->GetList()) {//只是找到结构体的对应字段
     if (field->name_->Name() == sym_->Name()) {
-      // A.f is MEM(+(MEM(e), CONST offset f))
-      // Add the constant field offset of f to the address A
-      tree::MemExp *exp = new tree::MemExp(new tree::BinopExp(
-          tree::BinOp::PLUS_OP, exp_and_ty->exp_->UnEx(),
-          new tree::ConstExp(idx * (reg_manager->WordSize()))));
-      return new tr::ExpAndTy(new tr::ExExp(exp), field->ty_);
+      auto fieldAddr = new tree::BinopExp(
+          tree::BinOp::PLUS_OP,
+          baseExpAndTy->exp_->UnEx(),
+          new tree::ConstExp(offsetIndex * reg_manager->WordSize()));
+      auto memExp = new tree::MemExp(fieldAddr);
+      return new tr::ExpAndTy(new tr::ExExp(memExp), field->ty_);
     }
-    ++idx;
+    ++offsetIndex; //通过字段在记录中的序号（offsetIndex）计算字段偏移量
   }
+
   errormsg->Error(pos_, "field %s doesn't exist", sym_->Name().c_str());
   return tr::getVoidExpAndNilTy();
 }
+//
 
 tr::ExpAndTy *SubscriptVar::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                       tr::Level *level, temp::Label *label,
-                                      err::ErrorMsg *errormsg) const {
+                                      err::ErrorMsg *errormsg) const { //a[5]
+  auto arrayExpAndTy = var_->Translate(venv, tenv, level, label, errormsg);
+  auto indexExpAndTy = subscript_->Translate(venv, tenv, level, label, errormsg);
+  auto arrayTy = arrayExpAndTy->ty_->ActualTy();
 
-
-  /* TODO: Put your lab5 code here */
-  tr::ExpAndTy *var = var_->Translate(venv, tenv, level, label, errormsg);
-  tr::ExpAndTy *subscript =
-      subscript_->Translate(venv, tenv, level, label, errormsg);
-  type::Ty *var_type = var->ty_;
-  if (typeid(*var_type) == typeid(type::ArrayTy)) {
-    // a[i] is MEM(+(MEM(e), *(i, CONST w))
-    tree::MemExp *exp = new tree::MemExp(new tree::BinopExp(
-        tree::BinOp::PLUS_OP, var->exp_->UnEx(),
-        new tree::BinopExp(tree::BinOp::MUL_OP, subscript->exp_->UnEx(),
-                           new tree::ConstExp(reg_manager->WordSize()))));
-    return new tr::ExpAndTy(
-        new tr::ExExp(exp),
-        (static_cast<type::ArrayTy *>(var_type)->ty_->ActualTy()));
-  } else {
+  if (typeid(*arrayTy) != typeid(type::ArrayTy)) {
     errormsg->Error(pos_, "array type required");
     return tr::getVoidExpAndNilTy();
   }
+
+  auto elementTy = static_cast<type::ArrayTy *>(arrayTy)->ty_->ActualTy();
+  auto offsetExp = new tree::BinopExp(tree::BinOp::MUL_OP, indexExpAndTy->exp_->UnEx(),
+                                     new tree::ConstExp(reg_manager->WordSize()));
+  auto addrExp = new tree::BinopExp(tree::BinOp::PLUS_OP, arrayExpAndTy->exp_->UnEx(), offsetExp);
+  auto memExp = new tree::MemExp(addrExp);
+
+  return new tr::ExpAndTy(new tr::ExExp(memExp), elementTy);
 }
 
 tr::ExpAndTy *VarExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -316,69 +320,65 @@ tr::ExpAndTy *StringExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 tr::ExpAndTy *CallExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                  tr::Level *level, temp::Label *label,
                                  err::ErrorMsg *errormsg) const {
-  env::EnvEntry *entry = venv->Look(func_);
-  if (entry && typeid(*entry) == typeid(env::FunEntry)) {
-    env::FunEntry *func = static_cast<env::FunEntry *>(entry);
-
-    // check if formals num match args num
-    if (func->formals_->GetList().size() != args_->GetList().size()) {
-      if (args_->GetList().size() > func->formals_->GetList().size()) {
-        errormsg->Error(pos_ - 1,
-                        "too many params in function " + func_->Name());
-        return tr::getVoidExpAndVoidTy();
-      } else {
-        errormsg->Error(pos_ - 1, "para type mismatch");
-        return tr::getVoidExpAndVoidTy();
-      }
-    }
-
-    tree::ExpList *args_list = new tree::ExpList();
-    // pass static link as the first parameter
-
-    // If this is a user function
-    if (func->level_) {
-      // Pass static link as the first parameter
-      args_list->Append(level->StaticLink(func->level_));
-    }
-
-    // check if types of actual and formal parameters match
-    // need to use cbegin for const function
-    auto formal_type = func->formals_->GetList().cbegin();
-    for (Exp *arg : args_->GetList()) {
-      tr::ExpAndTy *actual_exp_and_type =
-          arg->Translate(venv, tenv, level, label, errormsg);
-      type::Ty *actual_type = actual_exp_and_type->ty_;
-      if (!actual_type->IsSameType(*formal_type)) {
-        errormsg->Error(arg->pos_, "para type mismatch");
-        return tr::getVoidExpAndVoidTy();
-      }
-      args_list->Append(actual_exp_and_type->exp_->UnEx());
-      ++formal_type;
-    }
-
-    tree::CallExp *exp = new tree::CallExp(new tree::NameExp(func_), args_list);
-
-    // return result type of function
-    return new tr::ExpAndTy(new tr::ExExp(exp), func->result_);
-
-  } else {
-    errormsg->Error(pos_, "undefined function %s", func_->Name().data());
+  auto entry = venv->Look(func_);
+  if (!entry || typeid(*entry) != typeid(env::FunEntry)) {
+    errormsg->Error(pos_, "undefined function %s", func_->Name().c_str());
     return tr::getVoidExpAndVoidTy();
   }
+
+  auto func = static_cast<env::FunEntry *>(entry);
+  const auto &formals = func->formals_->GetList(); //函数定义时的参数列表
+
+  const auto &argsList = args_->GetList(); //函数调用时的实际参数表达式列表
+
+  if (formals.size() != argsList.size()) {
+    if (argsList.size() > formals.size()) {
+      errormsg->Error(pos_ - 1, "too many params in function %s", func_->Name().c_str());
+    } else {
+      errormsg->Error(pos_ - 1, "para type mismatch");
+    }
+    return tr::getVoidExpAndVoidTy();
+  }
+
+  auto args_exp_list = new tree::ExpList();
+  if (func->level_) {  // level不为0 需要静态链作为第一个参数
+    args_exp_list->Append(level->StaticLink(func->level_)); 
+    //对于嵌套定义的函数，调用时要传入静态链（即“外层帧的帧指针”）作为第一个隐式参数。
+  }
+
+  auto formal_it = formals.cbegin();
+  for (auto arg : argsList) {
+    auto arg_exp_ty = arg->Translate(venv, tenv, level, label, errormsg); //传入时计算
+    if (!arg_exp_ty->ty_->IsSameType(*formal_it)) {
+      errormsg->Error(arg->pos_, "para type mismatch");
+      return tr::getVoidExpAndVoidTy();
+    }
+    args_exp_list->Append(arg_exp_ty->exp_->UnEx());
+    ++formal_it;
+  }
+
+  auto call_exp = new tree::CallExp(new tree::NameExp(func_), args_exp_list);
+  return new tr::ExpAndTy(new tr::ExExp(call_exp), func->result_);
 }
 
+/*
+递归调用 left_->Translate() 和 right_->Translate() 获得左右操作数的表达式及类型信息。
+算术运算（加减乘除）强制要求整型，类型不符报错，构造 tree::BinopExp。
+逻辑运算（AND、OR）用条件跳转（CxExp）表达式实现短路，拼接左右表达式的真假链。
+关系运算（==, !=, <, <=, >, >=）构造条件跳转语句。对于字符串相等，调用外部函数 "string_equal" 代替。
+*/
 tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                tr::Level *level, temp::Label *label,
                                err::ErrorMsg *errormsg) const {
-  /* TODO: Put your lab5 code here */
-  tr::ExpAndTy *left = left_->Translate(venv, tenv, level, label, errormsg);
-  tr::ExpAndTy *right = right_->Translate(venv, tenv, level, label, errormsg);
-  type::Ty *left_ty = left->ty_;
-  type::Ty *right_ty = right->ty_;
+  auto left = left_->Translate(venv, tenv, level, label, errormsg);
+  auto right = right_->Translate(venv, tenv, level, label, errormsg);
 
+  auto left_ty = left->ty_;
+  auto right_ty = right->ty_;
+
+  // 算术运算符：要求整型
   if (oper_ == absyn::PLUS_OP || oper_ == absyn::MINUS_OP ||
       oper_ == absyn::TIMES_OP || oper_ == absyn::DIVIDE_OP) {
-    // check if operands of arithmetic operators are integers
     if (typeid(*left_ty) != typeid(type::IntTy)) {
       errormsg->Error(left_->pos_, "integer required");
       return new tr::ExpAndTy(tr::getVoidExp(), type::IntTy::Instance());
@@ -390,236 +390,195 @@ tr::ExpAndTy *OpExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
     tree::BinOp bin_op;
     switch (oper_) {
-    case absyn::PLUS_OP:
-      bin_op = tree::BinOp::PLUS_OP;
-      break;
-    case absyn::MINUS_OP:
-      bin_op = tree::BinOp::MINUS_OP;
-      break;
-    case absyn::TIMES_OP:
-      bin_op = tree::BinOp::MUL_OP;
-      break;
-    case absyn::DIVIDE_OP:
-      bin_op = tree::BinOp::DIV_OP;
-      break;
+    case absyn::PLUS_OP: bin_op = tree::BinOp::PLUS_OP; break;
+    case absyn::MINUS_OP: bin_op = tree::BinOp::MINUS_OP; break;
+    case absyn::TIMES_OP: bin_op = tree::BinOp::MUL_OP; break;
+    case absyn::DIVIDE_OP: bin_op = tree::BinOp::DIV_OP; break;
+    default: /* 不应到这 */ break;
     }
 
-    return new tr::ExpAndTy(
-        new tr::ExExp(new tree::BinopExp(bin_op, left->exp_->UnEx(),
-                                         right->exp_->UnEx())),
-        type::IntTy::Instance());
+    return new tr::ExpAndTy(new tr::ExExp(new tree::BinopExp(bin_op, left->exp_->UnEx(), right->exp_->UnEx())), 
+                            type::IntTy::Instance());
+  }
+
+  // 非算术运算符先检查类型一致
+  if (!left_ty->IsSameType(right_ty)) {
+    errormsg->Error(pos_, "same type required");
+    return left;
+  }
+
+  // 逻辑运算符 AND/OR
+
+  /*
+  if (a) {
+  if (b) {
+    goto TRUE;
   } else {
-    if (!left_ty->IsSameType(right_ty)) {
-      // check if operands type is same
-      errormsg->Error(pos_, "same type required");
-      return left;
-    }
+    goto FALSE;
+  }
+} else {
+  goto FALSE;
+}
 
-    if (oper_ == absyn::AND_OP || oper_ == absyn::OR_OP) {
-      temp::Label *second_condition_label = temp::LabelFactory::NewLabel();
-      tr::Cx left_cx = left->exp_->UnCx(errormsg);
-      tr::Cx right_cx = right->exp_->UnCx(errormsg);
+  */
+  if (oper_ == absyn::AND_OP || oper_ == absyn::OR_OP) {
+    temp::Label *mid_label = temp::LabelFactory::NewLabel();
+    auto left_cx = left->exp_->UnCx(errormsg);
+    auto right_cx = right->exp_->UnCx(errormsg);//转换为控制流语义
 
-      switch (oper_) {
-      case absyn::AND_OP: {
-        left_cx.trues_.DoPatch(second_condition_label);
-        tr::PatchList true_list = tr::PatchList(right_cx.trues_);
-        tr::PatchList false_list =
-            tr::PatchList::JoinPatch(left_cx.falses_, right_cx.falses_);
-        tree::SeqStm *stm = new tree::SeqStm(
-            left_cx.stm_,
-            new tree::SeqStm(new tree::LabelStm(second_condition_label),
-                             right_cx.stm_));
-        return new tr::ExpAndTy(new tr::CxExp(true_list, false_list, stm),
-                                type::IntTy::Instance());
-        break;
-      }
-
-      case absyn::OR_OP: {
-        left_cx.falses_.DoPatch(second_condition_label);
-        tr::PatchList true_list =
-            tr::PatchList::JoinPatch(left_cx.trues_, right_cx.trues_);
-        tr::PatchList false_list = tr::PatchList(right_cx.falses_);
-        tree::SeqStm *stm = new tree::SeqStm(
-            left_cx.stm_,
-            new tree::SeqStm(new tree::LabelStm(second_condition_label),
-                             right_cx.stm_));
-        return new tr::ExpAndTy(new tr::CxExp(true_list, false_list, stm),
-                                type::IntTy::Instance());
-        break;
-      }
-      }
-
-    } else {
-
-      tree::CjumpStm *cjump_stm = nullptr;
-      tree::RelOp rel_op;
-      switch (oper_) {
-      case absyn::EQ_OP:
-      case absyn::NEQ_OP: {
-        rel_op =
-            (oper_ == absyn::EQ_OP) ? tree::RelOp::EQ_OP : tree::RelOp::NE_OP;
-        if (left_ty->IsSameType(type::StringTy::Instance())) {
-          tree::ExpList *args = new tree::ExpList();
-          args->Append(left->exp_->UnEx());
-          args->Append(right->exp_->UnEx());
-          tree::ConstExp *expected = (oper_ == absyn::EQ_OP)
-                                         ? new tree::ConstExp(1)
-                                         : new tree::ConstExp(0);
-          // string_equal return 1 for equal, 0 for not
-          cjump_stm = new tree::CjumpStm(
-              tree::RelOp::EQ_OP, frame::ExternalCall("string_equal", args), expected,
-              nullptr, nullptr);
-        } else {
-          cjump_stm = new tree::CjumpStm(rel_op, left->exp_->UnEx(),
-                                         right->exp_->UnEx(), nullptr, nullptr);
-        }
-      }
-      case absyn::LT_OP:
-        rel_op = tree::RelOp::LT_OP;
-        break;
-      case absyn::LE_OP:
-        rel_op = tree::RelOp::LE_OP;
-        break;
-      case absyn::GT_OP:
-        rel_op = tree::RelOp::GT_OP;
-        break;
-      case absyn::GE_OP:
-        rel_op = tree::RelOp::GE_OP;
-        break;
-      case absyn::ABSYN_OPER_COUNT:
-        rel_op = tree::RelOp::REL_OPER_COUNT;
-        break;
-      }
-
-      if (!cjump_stm) {
-        cjump_stm = new tree::CjumpStm(rel_op, left->exp_->UnEx(),
-                                       right->exp_->UnEx(), nullptr, nullptr);
-      }
-      tr::PatchList true_list = tr::PatchList({&(cjump_stm->true_label_)});
-      tr::PatchList false_list = tr::PatchList({&(cjump_stm->false_label_)});
-      return new tr::ExpAndTy(new tr::CxExp(true_list, false_list, cjump_stm),
-                              type::IntTy::Instance());
+    if (oper_ == absyn::AND_OP) {
+      left_cx.trues_.DoPatch(mid_label);//如果左侧为假，直接跳 falses_
+      auto true_list = right_cx.trues_;
+      auto false_list = tr::PatchList::JoinPatch(left_cx.falses_, right_cx.falses_); //只要 left 或 right 为假，都应该跳 false
+      auto stm = new tree::SeqStm(left_cx.stm_, new tree::SeqStm(new tree::LabelStm(mid_label), right_cx.stm_));
+      return new tr::ExpAndTy(new tr::CxExp(true_list, false_list, stm), type::IntTy::Instance());
+    } else {  // OR_OP
+      left_cx.falses_.DoPatch(mid_label);
+      auto true_list = tr::PatchList::JoinPatch(left_cx.trues_, right_cx.trues_);
+      auto false_list = right_cx.falses_;
+      auto stm = new tree::SeqStm(left_cx.stm_, new tree::SeqStm(new tree::LabelStm(mid_label), right_cx.stm_));
+      return new tr::ExpAndTy(new tr::CxExp(true_list, false_list, stm), type::IntTy::Instance());
     }
   }
+
+  // 关系运算符
+  tree::RelOp rel_op;
+  tree::CjumpStm *cjump_stm = nullptr;
+  switch (oper_) {
+  case absyn::EQ_OP:
+  case absyn::NEQ_OP://两者共用
+    rel_op = (oper_ == absyn::EQ_OP) ? tree::RelOp::EQ_OP : tree::RelOp::NE_OP;
+    if (left_ty->IsSameType(type::StringTy::Instance())) {//字符串的比较没有大于 需要调用函数
+      auto args = new tree::ExpList();
+      args->Append(left->exp_->UnEx());
+      args->Append(right->exp_->UnEx());
+      auto expected = new tree::ConstExp(oper_ == absyn::EQ_OP ? 1 : 0);
+      cjump_stm = new tree::CjumpStm(tree::RelOp::EQ_OP, frame::ExternalCall("string_equal", args), expected, nullptr, nullptr);
+    }
+    break;
+  case absyn::LT_OP: rel_op = tree::RelOp::LT_OP; break;
+  case absyn::LE_OP: rel_op = tree::RelOp::LE_OP; break;
+  case absyn::GT_OP: rel_op = tree::RelOp::GT_OP; break;
+  case absyn::GE_OP: rel_op = tree::RelOp::GE_OP; break;
+  default: rel_op = tree::RelOp::REL_OPER_COUNT; break;
+  }
+
+  if (!cjump_stm) {//不是字符串
+    cjump_stm = new tree::CjumpStm(rel_op, left->exp_->UnEx(), right->exp_->UnEx(), nullptr, nullptr);
+  }//关键的构造CJUMP(LT, a, b, ??, ??)
+
+  auto true_list = tr::PatchList({&(cjump_stm->true_label_)});
+  auto false_list = tr::PatchList({&(cjump_stm->false_label_)});//跳转目标地址封装成补丁列表（PatchList）以待后续绑定标签。
+  return new tr::ExpAndTy(new tr::CxExp(true_list, false_list, cjump_stm), type::IntTy::Instance());
 }
+
 
 tr::ExpAndTy *RecordExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                    tr::Level *level, temp::Label *label,
                                    err::ErrorMsg *errormsg) const {
-  // check if record type is defined
-  type::Ty *type = tenv->Look(typ_);
-  if (type && typeid(*(type->ActualTy())) == typeid(type::RecordTy)) {
-    type::RecordTy *recordTy = static_cast<type::RecordTy *>(type->ActualTy());
-
-    temp::Temp *r = temp::TempFactory::NewTemp();
-    tree::ExpList *args = new tree::ExpList();
-    // creates an n-word area (CONST n*w)
-    args->Append(new tree::ConstExp((recordTy->fields_->GetList().size()) *
-                                    reg_manager->WordSize()));
-    tree::MoveStm *left_move_stm = new tree::MoveStm(
-        new tree::TempExp(r), frame::ExternalCall("alloc_record", args));
-
-    tree::SeqStm *initialization_list_head = nullptr;
-    tree::SeqStm *left_init_seq_stm =
-        new tree::SeqStm(left_move_stm, initialization_list_head);
-    tree::SeqStm *last_seq_stm = left_init_seq_stm;
-
-    // check if num of fields in RecordExp is same as in definition
-    if (fields_->GetList().size() != recordTy->fields_->GetList().size()) {
-      errormsg->Error(pos_, "num of field doesn't match");
-    }
-
-    // check if each field in RecordExp is same as in definition
-    auto record_field = recordTy->fields_->GetList().cbegin();
-    type::FieldList *fieldList = new type::FieldList();
-    int idx = 0;
-    for (absyn::EField *actual_field : fields_->GetList()) {
-
-      auto actual_field_exp_and_ty =
-          actual_field->exp_->Translate(venv, tenv, level, label, errormsg);
-      fieldList->Append(
-          new type::Field(actual_field->name_, actual_field_exp_and_ty->ty_));
-
-      // check field name
-      if (actual_field->name_->Name() != (*record_field)->name_->Name()) {
-        errormsg->Error(pos_, "field %s doesn't exist",
-                        actual_field->name_->Name().data());
-      }
-      // check field type
-      if (!actual_field_exp_and_ty->ty_->IsSameType((*record_field)->ty_)) {
-        errormsg->Error(pos_, "type of field %s doesn't match",
-                        actual_field->name_->Name().data());
-      }
-
-      tree::BinopExp *address_exp =
-          new tree::BinopExp(tree::BinOp::PLUS_OP, new tree::TempExp(r),
-                             new tree::ConstExp(idx * reg_manager->WordSize()));
-      tree::MoveStm *move_stm = new tree::MoveStm(
-          new tree::MemExp(address_exp), actual_field_exp_and_ty->exp_->UnEx());
-      tree::SeqStm *seq_stm = new tree::SeqStm(move_stm, nullptr);
-      last_seq_stm->right_ = seq_stm;
-      last_seq_stm = seq_stm;
-
-      ++record_field;
-      ++idx;
-    }
-    // fill the last one with void stm for simple
-    last_seq_stm->right_ = tr::getVoidStm();
-    // top ESEQ
-    tree::EseqExp *eseq_exp =
-        new tree::EseqExp(left_init_seq_stm, new tree::TempExp(r));
-    // empty record
-    if (fields_->GetList().empty()) {
-      return new tr::ExpAndTy(new tr::ExExp(eseq_exp), type::NilTy::Instance());
-    }
-    // The result of the whole expression is r
-    return new tr::ExpAndTy(new tr::ExExp(eseq_exp), type->ActualTy());
-  } else {
+  auto rec_type = tenv->Look(typ_);
+  if (!rec_type || typeid(*rec_type->ActualTy()) != typeid(type::RecordTy)) {
     errormsg->Error(pos_, "undefined type %s", typ_->Name().data());
     return tr::getVoidExpAndNilTy();
   }
+
+  auto recordTy = static_cast<type::RecordTy *>(rec_type->ActualTy());
+  auto field_count = recordTy->fields_->GetList().size();//字段数
+  auto allocated_size = field_count * reg_manager->WordSize();
+
+  // 在堆上分配一块足够大的内存
+  temp::Temp *record_temp = temp::TempFactory::NewTemp();
+  tree::ExpList *alloc_args = new tree::ExpList();
+  alloc_args->Append(new tree::ConstExp(allocated_size));
+  tree::MoveStm *alloc_stm = new tree::MoveStm(
+      new tree::TempExp(record_temp), frame::ExternalCall("alloc_record", alloc_args));
+
+  // 链表构建初始化语句序列
+  tree::SeqStm *stm_seq = new tree::SeqStm(alloc_stm, nullptr);
+  tree::SeqStm *tail = stm_seq;
+
+  // 字段数检查
+  if (fields_->GetList().size() != field_count) {
+    errormsg->Error(pos_, "num of field doesn't match");
+  }
+
+  auto defined_fields_it = recordTy->fields_->GetList().cbegin();
+  int index = 0;
+  for (auto actual_field : fields_->GetList()) {//对每一个字段
+    auto field_exp_ty = actual_field->exp_->Translate(venv, tenv, level, label, errormsg);
+
+    // 字段名和类型检查
+    if (actual_field->name_->Name() != (*defined_fields_it)->name_->Name()) {
+      errormsg->Error(pos_, "field %s doesn't exist", actual_field->name_->Name().data());
+    }
+    if (!field_exp_ty->ty_->IsSameType((*defined_fields_it)->ty_)) {
+      errormsg->Error(pos_, "type of field %s doesn't match", actual_field->name_->Name().data());
+    }
+
+    // 生成赋值语句
+    tree::Exp *addr = new tree::BinopExp(
+        tree::BinOp::PLUS_OP,
+        new tree::TempExp(record_temp),
+        new tree::ConstExp(index * reg_manager->WordSize()));
+    tree::MoveStm *move_stm = new tree::MoveStm(
+        new tree::MemExp(addr), field_exp_ty->exp_->UnEx());
+
+    tree::SeqStm *new_seq = new tree::SeqStm(move_stm, nullptr);
+    tail->right_ = new_seq;
+    tail = new_seq;
+
+    ++index;
+    ++defined_fields_it;
+  }
+
+  tail->right_ = tr::getVoidStm();
+
+  auto eseq = new tree::EseqExp(stm_seq, new tree::TempExp(record_temp));
+  if (fields_->GetList().empty()) {
+    return new tr::ExpAndTy(new tr::ExExp(eseq), type::NilTy::Instance());
+  }
+  return new tr::ExpAndTy(new tr::ExExp(eseq), rec_type->ActualTy());
 }
+
+
 
 tr::ExpAndTy *SeqExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *label,
                                 err::ErrorMsg *errormsg) const {
-  std::list<absyn::Exp *> exp_list = seq_->GetList();
-  absyn::Exp *last_exp = exp_list.back();
-  exp_list.pop_back();
+  auto expressions = seq_->GetList();
+  absyn::Exp *last_exp = expressions.back(); //尾部负责输出值
+  expressions.pop_back();
 
-  if (exp_list.empty()) {
-    tr::ExpAndTy *last_exp_and_ty =
-        last_exp->Translate(venv, tenv, level, label, errormsg);
-    return new tr::ExpAndTy(last_exp_and_ty->exp_, last_exp_and_ty->ty_);
+  if (expressions.empty()) {
+    return last_exp->Translate(venv, tenv, level, label, errormsg);
   }
 
-  tree::SeqStm *stm = nullptr;
-  tree::SeqStm *current_stm = stm;
-  bool first = true;
-  for (absyn::Exp *exp : exp_list) {
-    if (first) {
-      first = false;
-      tr::ExpAndTy *exp_and_ty =
-          exp->Translate(venv, tenv, level, label, errormsg);
-      current_stm = stm = new tree::SeqStm(exp_and_ty->exp_->UnNx(), nullptr);
+  tree::SeqStm *head = nullptr;
+  tree::SeqStm *current = nullptr;
+
+  for (auto exp : expressions) {
+    auto exp_and_ty = exp->Translate(venv, tenv, level, label, errormsg);
+    tree::SeqStm *new_seq = new tree::SeqStm(exp_and_ty->exp_->UnNx(), nullptr);
+
+    if (!head) {
+      head = new_seq;
+      current = new_seq;
     } else {
-      tr::ExpAndTy *exp_and_ty =
-          exp->Translate(venv, tenv, level, label, errormsg);
-      current_stm->right_ = new tree::SeqStm(exp_and_ty->exp_->UnNx(), nullptr);
-      current_stm = static_cast<tree::SeqStm *>(current_stm->right_);
-    }
+      current->right_ = new_seq;
+      current = new_seq;
+    }//串成链表 方便后续用一个 SeqStm 头节点整体表示整个语句序列
   }
 
-  tr::ExpAndTy *last_exp_and_ty =
-      last_exp->Translate(venv, tenv, level, label, errormsg);
+  auto last_exp_and_ty = last_exp->Translate(venv, tenv, level, label, errormsg);
+  current->right_ = tr::getVoidStm();
 
-  tree::Exp *exp = nullptr;
-  current_stm->right_ = tr::getVoidStm();
-  exp = new tree::EseqExp(stm, last_exp_and_ty->exp_->UnEx());
+  tree::Exp *eseq_exp = new tree::EseqExp(head, last_exp_and_ty->exp_->UnEx());
 
-  return new tr::ExpAndTy(new tr::ExExp(exp), last_exp_and_ty->ty_);
+  return new tr::ExpAndTy(new tr::ExExp(eseq_exp), last_exp_and_ty->ty_);
 }
+
+
+//////////////////
 
 tr::ExpAndTy *AssignExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                    tr::Level *level, temp::Label *label,
@@ -662,31 +621,25 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     return new tr::ExpAndTy(tr::getVoidExp(), thenTy);
   }
 
-  // Make two labels t and f to which the conditional will branch
+
   temp::Label *t = temp::LabelFactory::NewLabel();
   temp::Label *f = temp::LabelFactory::NewLabel();
-  // Both braches should finish by jumping newly created “joint” label
+
   temp::Label *joint = temp::LabelFactory::NewLabel();
 
-  // Allocate a temporary r
   temp::Temp *r = temp::TempFactory::NewTemp();
 
-  // Treat e1 as a Cx (apply unCx to e1)
   tr::Cx test_cx = test_exp_and_ty->exp_->UnCx(errormsg);
 
   test_cx.trues_.DoPatch(t);
   test_cx.falses_.DoPatch(f);
 
   if (!elsee_) {
-    // no else
-    // then must produce no value
     if (!thenTy->IsSameType(type::VoidTy::Instance())) {
       errormsg->Error(then_->pos_, "if-then exp's body must produce no value");
       return new tr::ExpAndTy(tr::getVoidExp(), thenTy);
     }
 
-    // If e2 is “statements” (Nx), Translate the result as Nx
-    // If not meet condition, go to false label
     tree::SeqStm *stm = new tree::SeqStm(
         test_cx.stm_,
         new tree::SeqStm(new tree::LabelStm(t),
@@ -698,15 +651,11 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     tr::ExpAndTy *else_exp_and_ty =
         elsee_->Translate(venv, tenv, level, label, errormsg);
     type::Ty *elseTy = else_exp_and_ty->ty_;
-    // check if then and else have same type
     if (!elseTy->IsSameType(thenTy)) {
       errormsg->Error(pos_, "then exp and else exp type mismatch");
       return new tr::ExpAndTy(tr::getVoidExp(), thenTy);
     }
 
-    // Treat e2 and e3 as Ex (apply unEx to e2 and e3)
-
-    // after label t,  move e2 to r
     tree::SeqStm *true_stm = new tree::SeqStm(
         new tree::LabelStm(t),
         new tree::SeqStm(
@@ -714,7 +663,7 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                               then_exp_and_ty->exp_->UnEx()),
             new tree::JumpStm(new tree::NameExp(joint),
                               new std::vector<temp::Label *>{joint})));
-    // after label f, move e3 to r
+
     tree::SeqStm *false_stm = new tree::SeqStm(
         new tree::LabelStm(f),
         new tree::SeqStm(
@@ -722,7 +671,7 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                               else_exp_and_ty->exp_->UnEx()),
             new tree::JumpStm(new tree::NameExp(joint),
                               new std::vector<temp::Label *>{joint})));
-    // return exp is r
+
     tree::EseqExp *exp = new tree::EseqExp(
         new tree::SeqStm(
             test_cx.stm_,

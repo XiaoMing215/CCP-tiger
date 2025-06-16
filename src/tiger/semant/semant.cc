@@ -110,7 +110,8 @@ type::Ty *StringExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 type::Ty *CallExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                               int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
-  //这不是函数定义！只需要保证函数存在且参数正确
+  //这不是函数定义！只需要保证函数存在且参数正确 还有返回值类型需要对的上
+  // f 1,2
   auto entry = venv->Look(func_);
   if (!entry || typeid(*entry) != typeid(env::FunEntry)) {
     errormsg->Error(pos_, "undefined function %s", func_->Name().data());
@@ -170,6 +171,7 @@ type::Ty *RecordExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 int labelcount, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
   //形如person{name = "Tom", age = 18}
+  //不用做递归检查：person已经被定义了
   //查找对应的 record 类型定义（比如 person）。检查字段是否存在、名字是否匹配、类型是否一致。返回整个 record 的类型（即 RecordTy 类型）。
   type::Ty *ty = tenv->Look(typ_);  
   if (!ty) {
@@ -177,7 +179,7 @@ type::Ty *RecordExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
     return type::IntTy::Instance();
   }
 
-  ty = ty->ActualTy();  // 展开 NameTy
+  ty = ty->ActualTy();  // 展开 NameTy 有可能最后actual不是真record类
 
   if (typeid(*ty) != typeid(type::RecordTy)) {
     errormsg->Error(pos_, "type %s is not a record type", typ_->Name().data());
@@ -188,14 +190,14 @@ type::Ty *RecordExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   auto fields = record_ty->fields_->GetList();
   auto records = fields_->GetList();
 
-  if (fields.size() != records.size()) {
+  if (fields.size() != records.size()) { //检查字段个数
     errormsg->Error(pos_, "record field number mismatch");
     return type::IntTy::Instance();
   }
 
   auto f_it = fields.begin();
   auto r_it = records.begin();
-  for (; f_it != fields.end(); ++f_it, ++r_it) {
+  for (; f_it != fields.end(); ++f_it, ++r_it) { //一一对应
     if ((*f_it)->name_ != (*r_it)->name_) {
       errormsg->Error(pos_, "field name mismatch: expected %s but got %s",
                       (*f_it)->name_->Name().data(), (*r_it)->name_->Name().data());
@@ -334,6 +336,7 @@ type::Ty *LetExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
 
   return ret_ty;
 }
+//let没有需要检查的东西 但是它里面可能出错
 
 type::Ty *ArrayExp::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
                                int labelcount, err::ErrorMsg *errormsg) const {
@@ -418,25 +421,29 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
   更新符号表：在完成所有检查后，将函数的返回类型和其他相关信息更新到符号表中。
   */
   auto func_list = functions_->GetList();
-  std::unordered_set<sym::Symbol*> current_scope_names;
+  std::unordered_set<sym::Symbol*> current_scope_names; //记录当前这组函数声明中已经出现过的函数名
 
   for (const auto &function : func_list) {
       if (current_scope_names.count(function->name_)) {
           errormsg->Error(pos_, "two functions have the same name");
       }
       current_scope_names.insert(function->name_);//不能使用害人的look！！！
+      //这是因为内外的命名可能是相同的 内部遮蔽外部即可
 
-      auto params = function->params_;
-      type::Ty *result_ty = type::VoidTy::Instance();
+      auto params = function->params_; //参数列表
+      type::Ty *result_ty = type::VoidTy::Instance(); //函数声明中的返回类型
       if (function->result_) {
-          result_ty = tenv->Look(function->result_);
+          result_ty = tenv->Look(function->result_); //保证返回类型有效，look报错
       }
 
+
       auto formals = params->MakeFormalTyList(tenv, errormsg);
-      // 提前注册函数定义（为了支持递归）
+      // 提前注册函数名称以及返回值（为了支持递归）
       venv->Enter(function->name_, new env::FunEntry(formals, result_ty));
+      //依次将定义列表的函数注册到当中
   }
 
+  //开始分析他们的内容
   for (const auto &function : func_list) {
       auto params = function->params_;
       auto formals = params->MakeFormalTyList(tenv, errormsg);
@@ -448,12 +455,12 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
           venv->Enter((*param_it)->name_, new env::VarEntry(*formal_it));
       }
 
-      // 递归分析函数体
+      // 递归分析函数体 第一遍循环保证了这个东西正常
       auto res = function->body_->SemAnalyze(venv, tenv, labelcount, errormsg)->ActualTy();
 
       type::Ty *result_ty = type::VoidTy::Instance();
       if (function->result_) {
-          result_ty = tenv->Look(function->result_);//获取其返回类型
+          result_ty = tenv->Look(function->result_);//获取其返回类型 如果不对会在look报错
       }
 
       
@@ -464,9 +471,10 @@ void FunctionDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv,
           if (!result_ty->IsSameType(res)) {//返回不是void但type不同
               errormsg->Error(pos_, "function return value mismatch");
           }
-      }
+      }//判断返回值有无及类型对应
 
       venv->EndScope();
+      //对每个函数独立开栈分析
   }
 
 }
@@ -475,8 +483,8 @@ void VarDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
                         err::ErrorMsg *errormsg) const {
   //var x: int := 10
   /* TODO: Put your lab4 code here */
-  //考察“int”
-  //需要类型推断
+
+  //考察“int”与右侧初始化式子关系 需要类型推断
   auto init_ty = init_->SemAnalyze(venv, tenv, labelcount, errormsg)->ActualTy();
   if(typ_){
     auto ty = tenv->Look(typ_);
@@ -498,7 +506,7 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
   //类型声明不仅限于记录类型，还可以是类型别名、数组类型等。
   //type integer = int
 
-  //不使用look 注册所有type
+  //不使用look 注册所有type 与函数一样 这是先占坑的过程
   auto type_list = types_->GetList();
   std::unordered_set<sym::Symbol *> current_scope_names;
 
@@ -510,15 +518,16 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
     tenv->Enter(type->name_, new type::NameTy(type->name_, nullptr));
   }
 
-  //给NameTy补ty_
+  //给NameTy补ty_ 此时不知道右边的具体类型
   for (const auto &type : type_list) {
     auto ty = type->ty_->SemAnalyze(tenv, errormsg);
     auto entry = tenv->Look(type->name_);
     if (entry && typeid(*entry) == typeid(type::NameTy)) {
       auto name_ty = static_cast<type::NameTy *>(entry);
-      name_ty->ty_ = ty;
+      name_ty->ty_ = ty;//对namety解引用导致了可能的“环”被连起来  类型指针被指向非真实的对方
     }
   }
+  //
 
   //循环检测
   for (const auto &type : type_list) {
@@ -528,7 +537,7 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
     //存名字可能的问题：type a = b type b = array of int 报错
 
     while (actual && typeid(*actual) == typeid(type::NameTy)) {
-      if (visited.count(actual)) {
+      if (visited.count(actual)) {//访问过了第二遍证明遇到环路
         errormsg->Error(pos_, "illegal type cycle");
         return;//一次报错就返回 否则通不过测试
       }
@@ -544,6 +553,7 @@ void TypeDec::SemAnalyze(env::VEnvPtr venv, env::TEnvPtr tenv, int labelcount,
 type::Ty *NameTy::SemAnalyze(env::TEnvPtr tenv, err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
   /*
+  这是用于将被定义新名字的类型拆包
   假设我们有如下的类型定义：
   type student = { name: string, score: int }
   NameTy 会通过类型名 student 来查找该类型是否已定义。
@@ -566,7 +576,8 @@ type::Ty *RecordTy::SemAnalyze(env::TEnvPtr tenv,
 type::Ty *ArrayTy::SemAnalyze(env::TEnvPtr tenv,
                               err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab4 code here */
-  //array的申明需要检查声称的每个item是否是合法的
+  //array of int
+  //array的申明需要检查声称的每个item是否是合法的type 即上方“int”
   auto item_ty = tenv->Look(array_);
   if(item_ty) {
     return new type::ArrayTy(item_ty);

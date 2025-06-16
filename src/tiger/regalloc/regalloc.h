@@ -11,10 +11,11 @@
 
 namespace ra {
 
+// 寄存器分配结果，包含寄存器映射和重写后的指令列表
 class Result {
 public:
-  temp::Map *coloring_;
-  assem::InstrList *il_;
+  temp::Map *coloring_;        // 临时寄存器到物理寄存器的映射
+  assem::InstrList *il_;       // 重写后的汇编指令链表
 
   Result() : coloring_(nullptr), il_(nullptr) {}
   Result(temp::Map *coloring, assem::InstrList *il)
@@ -27,68 +28,45 @@ public:
 };
 
 class RegAllocator {
-  /* TODO: Put your lab6 code here */
-  private:
+private:
+  std::unique_ptr<ra::Result> result_;    // 分配结果
+  frame::Frame *frame_;                    // 当前函数的栈帧信息
+  assem::InstrList *assem_instr_;         // 原始汇编指令列表
 
-  std::unique_ptr<ra::Result> result_;
-  frame::Frame *frame_;
-  assem::InstrList *assem_instr_;
+  live::IGraphPtr interf_graph;            // 干扰图
+  live::MoveList *moves;                   // 需要合并的移动指令列表
+  tab::Table<temp::Temp, live::INode> *temp_node_map;  // 临时寄存器到干扰图节点的映射
 
-  live::IGraphPtr interf_graph;
-  live::MoveList *moves;
-  tab::Table<temp::Temp, live::INode> *temp_node_map;
+  live::INodeListPtr precolored;           // 已经预着色的寄存器节点（物理寄存器）
 
+  // 工作列表、集合和栈，分类管理干扰图节点
+  live::INodeListPtr simplify_worklist;    
+  live::INodeListPtr freeze_worklist;      
+  live::INodeListPtr spill_worklist;       
+  live::INodeListPtr spilled_nodes;        
+  live::INodeListPtr initial;            
+  live::INodeListPtr coalesced_nodes;      
+  live::INodeListPtr select_stack;          
+  live::INodeListPtr colored_nodes;         
 
-  // store precolored machine register nodes
-  live::INodeListPtr precolored;
+  live::INodeListPtr no_spill_temps;        // 标记为不允许溢出的寄存器节点
 
-  /* Node work-list, sets, stacks */
+  // 移动指令集，管理合并状态
+  live::MoveList *worklist_moves;        
+  live::MoveList *active_moves;           
+  live::MoveList *coalesced_moves;        
+  live::MoveList *constrained_moves;       
+  live::MoveList *frozen_moves;            
 
-  // low-degree non-move-related nodes
-  live::INodeListPtr simplify_worklist;
-  // low-degree move-related nodes
-  live::INodeListPtr freeze_worklist;
-  // high-degree nodes
-  live::INodeListPtr spill_worklist;
-  // nodes marked for spilling
-  live::INodeListPtr spilled_nodes;
-  // temporary registers, not precolored and not yet processed
-  live::INodeListPtr initial;
-  // Registers been coalesced
-  live::INodeListPtr coalesced_nodes;
-  // Containing temporaries removed from the graph
-  live::INodeListPtr select_stack;
-  // nodes colored
-  live::INodeListPtr colored_nodes;
+  tab::Table<live::INode, live::MoveList> *move_list; 
+  tab::Table<live::INode, int> *degree;                
+  tab::Table<live::INode, live::INode> *alias;         
 
-  // regs should not be spilled
-  live::INodeListPtr no_spill_temps;
+  // K表示寄存器的数量（颜色数）
+  int K;
 
-  /* Move sets */
-
-  // moves enabled for coalescing
-  live::MoveList *worklist_moves;
-  // moves not yet ready for coalescing
-  live::MoveList *active_moves;
-  // moves has been coalesced
-  live::MoveList *coalesced_moves;
-  // moves whose source and target interfere
-  live::MoveList *constrained_moves;
-  // moves that will no longer be considered for coalescing
-  live::MoveList *frozen_moves;
-
-  /* Other data structures */
-
-  // A mapping from a node to the list of moves it is associated with
-  tab::Table<live::INode, live::MoveList> *move_list;
-  // an array containing the current degree of each node
-  tab::Table<live::INode, int> *degree;
-  // When a move (u, v) has been coalesced, v put in coalescedNodes and u put
-  // back on some work-list, then alias[v]=u
-  tab::Table<live::INode, live::INode> *alias;
-
+  // 以下为寄存器分配算法的主要步骤函数声明
   void LivenessAnalysis();
-
   void Init();
   void ClearAndInit();
 
@@ -115,8 +93,6 @@ class RegAllocator {
 
   assem::InstrList *RemoveRedundantMove(temp::Map *coloring);
   bool IsRedundant(assem::Instr *instr, temp::Map *coloring);
-
-  int K;
 
 public:
   RegAllocator(frame::Frame *frame, std::unique_ptr<cg::AssemInstr> assem_instr);

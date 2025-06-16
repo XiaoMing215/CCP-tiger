@@ -3,6 +3,7 @@
 
 #include "tiger/util/table.h"
 
+//Graph 类：管理图的整体结构，包含所有节点和节点数量，支持创建节点和添加边。
 namespace graph {
 
 template <typename T> class Node;
@@ -10,67 +11,32 @@ template <typename T> class NodeList;
 
 template <typename T> class Graph {
 public:
-  // Make a new graph
   Graph() : nodecount_(0), my_nodes_(new NodeList<T>()) {}
-
-  // Get the list of nodes belonging to graph
   NodeList<T> *Nodes();
-
-  // Make a new node in graph "g", with associated "info_"
   Node<T> *NewNode(T *info);
-
-  // Make a new edge joining nodes "from" and "to", which must belong
-  // to the same graph
   void AddEdge(Node<T> *from, Node<T> *to);
-
-  // Show all the nodes and edges in the graph, using the function "show_info"
-  // to print the name of each node
-  static void Show(FILE *out, NodeList<T> *p,
-                   std::function<void(T *)> show_info);
-
+  static void Show(FILE *out, NodeList<T> *p, std::function<void(T *)> show_info);
   int nodecount_;
-
   ~Graph();
 
 private:
   NodeList<T> *my_nodes_;
 };
-
+// Node 类：表示图中的单个节点，维护节点之间的前驱后继关系，存储节点信息。
 template <typename T> class Node {
   template <typename NodeType> friend class Graph;
 
 public:
-  // Tell if there is an edge from this node to "n"
   bool GoesTo(Node<T> *n);
-
-  // Tell if node n is adjacent to this node
   bool Adj(Node<T> *n);
-
-  // Return length of predecessor list for node n
   int InDegree();
-
-  // Return length of successor list for node n
   int OutDegree();
-
-  // Get all the successors and predecessors
   NodeList<T> *Adj();
-
-  // Get all the successors of node
   NodeList<T> *Succ();
-
-  // Get all the predecessors of node
   NodeList<T> *Pred();
-
-  // Tell how many edges lead to or from node
   int Degree();
-
-  // Get the "info_" associated with node
   T *NodeInfo();
-
-  // Get the "my_key_" associated with node
   int Key();
-
-  // dtors of Node
   ~Node<T>() {
     delete succs_;
     delete preds_;
@@ -87,52 +53,41 @@ private:
         info_(nullptr) {}
 };
 
+// NodeList 类：用链表管理一组节点，支持集合操作（并、差等）和节点插入删除。
 template <typename T> class NodeList {
   friend class Graph<T>;
   friend class Node<T>;
 
-public:
-  // Make a NodeList
+public: 
   NodeList<T>() = default;
   ~NodeList<T>() = default;
-
-  // Tell if "a" is in the list
   bool Contain(Node<T> *n);
-
-  // Put list b at the back of list a and return the concatenated list
   void CatList(NodeList<T> *nl);
   void DeleteNode(Node<T> *n);
   void Clear() { node_list_.clear(); }
   void Prepend(Node<T> *n) { node_list_.push_front(n); }
   void Append(Node<T> *n) { node_list_.push_back(n); }
-  void Union(Node<T> *n);  // append if not contain
-
-  // Set operation on two lists
+  void Union(Node<T> *n);
   NodeList<T> *Union(NodeList<T> *nl);
   NodeList<T> *Diff(NodeList<T> *nl);
-
   [[nodiscard]] const std::list<Node<T> *> &GetList() const {
     return node_list_;
   }
-
   bool SameInfo(Node<T> *n);
 
 private:
   std::list<Node<T> *> node_list_{};
 };
 
-// Generic creation of Node<tree>
+// NewNode 函数：创建节点，初始化其基本属性，加入图的节点列表，并分配前驱后继列表。
 template <typename T> Node<T> *Graph<T>::NewNode(T *info) {
   auto n = new Node<T>();
   n->my_graph_ = this;
   n->my_key_ = nodecount_++;
-
   my_nodes_->node_list_.push_back(n);
-
   n->succs_ = new NodeList<T>();
   n->preds_ = new NodeList<T>();
   n->info_ = info;
-
   return n;
 }
 
@@ -144,23 +99,23 @@ template <typename T> bool Node<T>::Adj(Node<T> *n) {
   return succs_->Contain(n) || preds_->Contain(n);
 }
 
-template <typename T> void Graph<T>::AddEdge(Node<T> *from, Node<T> *to) {
-  assert(from);
-  assert(to);
-  assert(from->my_graph_ == this);
-  assert(to->my_graph_ == this);
-  if (from->GoesTo(to))
-    return;
-  to->preds_->node_list_.push_back(from);
-  from->succs_->node_list_.push_back(to);
+template <typename T>
+void Graph<T>::AddEdge(Node<T> *from, Node<T> *to) {
+  assert(from && to);
+  assert(from->my_graph_ == this && to->my_graph_ == this);
+  if (from->GoesTo(to)) return;
+  from->succs_->Append(to);
+  to->preds_->Append(from);
 }
 
-template <typename T> Graph<T>::~Graph() {
-  for (auto node : my_nodes_->node_list_) {
+template <typename T>
+Graph<T>::~Graph() {
+  for (auto node : my_nodes_->GetList()) {
     delete node;
   }
   delete my_nodes_;
 }
+
 
 template <typename T> int Node<T>::InDegree() {
   return preds_->node_list_.size();
@@ -189,58 +144,48 @@ template <typename T> int Node<T>::Key() { return my_key_; }
 
 template <typename T> NodeList<T> *Graph<T>::Nodes() { return my_nodes_; }
 
-template <typename T> bool NodeList<T>::Contain(Node<T> *n) {
-  for (auto node : node_list_) {
-    if (node == n)
-      return true;
-  }
-  return false;
+template <typename T>
+bool NodeList<T>::Contain(Node<T> *n) {
+  return std::find(node_list_.begin(), node_list_.end(), n) != node_list_.end();
 }
 
-template <typename T> bool NodeList<T>::SameInfo(Node<T> *n) {
-  for (auto node : node_list_) {
-    if (node->NodeInfo() == n->NodeInfo())
-      return true;
-  }
-  return false;
+template <typename T>
+bool NodeList<T>::SameInfo(Node<T> *n) {
+  return std::any_of(node_list_.begin(), node_list_.end(),
+                     [n](Node<T> *node) { return node->NodeInfo() == n->NodeInfo(); });
 }
 
-template <typename T> void NodeList<T>::DeleteNode(Node<T> *n) {
+template <typename T>
+void NodeList<T>::DeleteNode(Node<T> *n) {
   assert(n);
-  auto it = node_list_.begin();
-  for (; it != node_list_.end(); it++) {
-    if (*it == n)
-      break;
-  }
-  if (it == node_list_.end())
-    return;
-  node_list_.erase(it);
+  auto it = std::find(node_list_.begin(), node_list_.end(), n);
+  if (it != node_list_.end())
+    node_list_.erase(it);
 }
 
-template <typename T> void NodeList<T>::CatList(NodeList<T> *nl) {
-  if (!nl || nl->node_list_.empty())
-    return;
-  node_list_.insert(node_list_.end(), nl->node_list_.begin(),
-                    nl->node_list_.end());
+template <typename T>
+void NodeList<T>::CatList(NodeList<T> *nl) {
+  if (nl)
+    node_list_.insert(node_list_.end(), nl->node_list_.begin(), nl->node_list_.end());
 }
 
-template <typename T> void NodeList<T>::Union(Node<T> *n) {
-  if (!Contain(n)) {
+template <typename T>
+void NodeList<T>::Union(Node<T> *n) {
+  if (!Contain(n))
     node_list_.push_back(n);
-  }
 }
 
-template <typename T> NodeList<T> *NodeList<T>::Union(NodeList<T> *nl) {
-  NodeList<T> *res = new NodeList<T>();
-  for (auto node : node_list_) {
+template <typename T>
+NodeList<T> *NodeList<T>::Union(NodeList<T> *nl) {
+  auto res = new NodeList<T>();
+  for (auto node : node_list_)
     res->Append(node);
-  }
-  for (auto node : nl->GetList()) {
+  for (auto node : nl->GetList())
     if (!res->Contain(node))
       res->Append(node);
-  }
   return res;
 }
+
 
 template <typename T> NodeList<T> *NodeList<T>::Diff(NodeList<T> *nl) {
   NodeList<T> *res = new NodeList<T>();
@@ -263,20 +208,24 @@ using Table = tab::Table<Node<T>, ValueType>;
  * @param show_info show-information function
  */
 template <typename T>
-void Graph<T>::Show(FILE *out, NodeList<T> *p,
-                    std::function<void(T *)> show_info) {
-  for (Node<T> *n : p->node_list_) {
+void Graph<T>::Show(FILE *out, NodeList<T> *p, std::function<void(T *)> show_info) {
+  for (auto *n : p->node_list_) {
     assert(n);
-    if (show_info)
-      show_info(n->NodeInfo());
+    if (show_info) show_info(n->NodeInfo());
     fprintf(out, " (%d): ", n->Key());
-    for (auto q : n->Succ()->node_list_)
+
+    auto *succs = n->Succ();
+    for (auto *q : succs->GetList())
       fprintf(out, "%d ", q->Key());
-    for (auto q : n->Pred()->node_list_)
+
+    auto *preds = n->Pred();
+    for (auto *q : preds->GetList())
       fprintf(out, "%d ", q->Key());
+
     fprintf(out, "\n");
   }
 }
+
 
 } // namespace graph
 

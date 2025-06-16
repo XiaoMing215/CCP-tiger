@@ -41,6 +41,11 @@ void ProcFrag::OutputAssem(FILE *out, OutputPhase phase, bool need_ra) const {
   TigerLog(body_);
 
   {
+    /*
+    1. Linearize：把嵌套的 SEQ / ESEQ 展开为线性语句序列
+    2. BasicBlocks：根据 JUMP / CJUMP 拆分为基本块
+    3. TraceSchedule：用启发式算法重排基本块，提高局部性
+    */
     // Canonicalize
     TigerLog("-------====Canonicalize=====-----\n");
     canon::Canon canon(body_);

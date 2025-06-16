@@ -1,84 +1,77 @@
 #include "tiger/liveness/flowgraph.h"
 #include "tiger/codegen/assem.h"
 
+
+#include "tiger/liveness/flowgraph.h"
+
 namespace fg {
 
-#define FLOWGRAPH_LOG(fmt, args...)                                            \
-  do {                                                                         \
-  } while (0);
+static bool IsLabel(const assem::Instr *instr) {
+  return typeid(*instr) == typeid(assem::LabelInstr);
+}
 
-//
-//#define FLOWGRAPH_LOG(fmt, args...)                                            \
-//  do {                                                                         \
-//    printf("[FLOWGRAPH_LOG][%s:%d:%s] " fmt "\n", __FILE__, __LINE__,          \
-//           __FUNCTION__, ##args);                                              \
-//    fflush(stdout);                                                            \
-//  } while (0);
+static bool IsOper(const assem::Instr *instr) {
+  return typeid(*instr) == typeid(assem::OperInstr);
+}
+
+static bool HasJumps(const assem::Instr *instr) {
+  if (const auto *oper = dynamic_cast<const assem::OperInstr *>(instr)) {
+    return oper->jumps_ != nullptr;
+  }
+  return false;
+}
+
+static temp::Label *GetLabel(const assem::Instr *instr) {
+  return static_cast<const assem::LabelInstr *>(instr)->label_;
+}
+
+static assem::Targets *GetJumps(const assem::Instr *instr) {
+  return static_cast<const assem::OperInstr *>(instr)->jumps_;
+}
 
 void FlowGraphFactory::AssemFlowGraph() {
-
-  FLOWGRAPH_LOG("start")
-
-  // AssemFlowGraph() will construct the flow graph and store into flowgraph_
-  // Info of each graph::Node is actually a pointer to an assem::Instr
   assem::Instr *prev_instr = nullptr;
   FNodePtr prev_node = nullptr;
 
   for (assem::Instr *instr : instr_list_->GetList()) {
-
-    FLOWGRAPH_LOG("create node for instr")
-
-    // create node for instr
     FNodePtr node = flowgraph_->NewNode(instr);
 
-//    if (typeid(*instr) == typeid(assem::LabelInstr)) {
-//      label_map_->Enter(static_cast<assem::LabelInstr *>(instr)->label_,
-//                        node);
-//    }
-
     if (prev_instr) {
-
-      if (typeid(*prev_instr) == typeid(assem::OperInstr)) {
-        // add edge if prev_instr is not jump
-        if (!(static_cast<assem::OperInstr *>(prev_instr)->jumps_)) {
+      if (IsOper(prev_instr)) {
+        if (!HasJumps(prev_instr)) {
           flowgraph_->AddEdge(prev_node, node);
         }
-      } else { // assem::MoveInstr or assem::LabelInstr
-        if (typeid(*prev_instr) == typeid(assem::LabelInstr)) {
-          label_map_->Enter(( static_cast<assem::LabelInstr *>(prev_instr))->label_, node);
+      } else {
+        if (IsLabel(prev_instr)) {
+          label_map_->Enter(GetLabel(prev_instr), node);
         }
         flowgraph_->AddEdge(prev_node, node);
       }
-    } else {
-      // first instr
     }
+
     prev_instr = instr;
     prev_node = node;
   }
 
-  FLOWGRAPH_LOG("start check jump fields of the instrs")
-
-  // jump fields of the instrs are used to in creating control flow edges
-  // add edges for jump
   for (FNodePtr node : flowgraph_->Nodes()->GetList()) {
     assem::Instr *instr = node->NodeInfo();
 
-    // add edge if instr is jump
-    if (typeid(*instr) == typeid(assem::OperInstr)) {
-      assem::Targets *jumps =
-          static_cast<assem::OperInstr *>(instr)->jumps_;
-      if (jumps) {
-        for (temp::Label *jump_target : *(jumps->labels_)) {
-          FNodePtr target = label_map_->Look(jump_target);
-          flowgraph_->AddEdge(node, target);
+    if (IsOper(instr) && HasJumps(instr)) {
+      for (temp::Label *target : *(GetJumps(instr)->labels_)) {
+        FNodePtr target_node = label_map_->Look(target);
+        if (target_node) {
+          flowgraph_->AddEdge(node, target_node);
         }
       }
     }
   }
 }
 
-} // namespace fg
+}  // namespace fg
 
+// def返回此指令中定义（写入）的寄存器列表（TempList）。
+// Use()：返回此指令中使用（读取）的寄存器列表。
+// TempList 是一个链表结构，通常表示寄存器（Temp）集合。
 namespace assem {
 
 temp::TempList *LabelInstr::Def() const { return new temp::TempList(); }

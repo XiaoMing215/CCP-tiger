@@ -13,19 +13,12 @@ Temp *TempList::NthTemp(int i) const {
 } // namespace temp
 
 namespace assem {
-/**
- * First param is string created by this function by reading 'assem' string
- * and replacing `d `s and `j stuff.
- * Last param is function to use to determine what to do with each temp.
- * @param assem assembly string
- * @param dst dst_ temp
- * @param src src temp
- * @param jumps jump labels_
- * @param m temp map
- * @return formatted assembly string
- */
+
+
+//Format 函数会将模板字符串中的占位符 \s0, `d1替换为实际寄存器名（如%rax, %rdi`）：
 static std::string Format(std::string_view assem, temp::TempList *dst,
-                          temp::TempList *src, Targets *jumps, temp::Map *m) {
+                          temp::TempList *src, Targets *jumps, temp::Map *m) { 
+                            //map保存了实际上发挥作用的寄存器
   std::string result;
   for (std::string::size_type i = 0; i < assem.size(); i++) {
     char ch = assem.at(i);
@@ -64,17 +57,17 @@ static std::string Format(std::string_view assem, temp::TempList *dst,
   return result;
 }
 
-void OperInstr::Print(FILE *out, temp::Map *m) const {
+void OperInstr::Print(FILE *out, temp::Map *m) const { //一般指令（算数、跳转等）
   std::string result = Format(assem_, dst_, src_, jumps_, m);
   fprintf(out, "%s\n", result.data());
 }
 
-void LabelInstr::Print(FILE *out, temp::Map *m) const {
+void LabelInstr::Print(FILE *out, temp::Map *m) const { //标签指令（用于跳转标签）
   std::string result = Format(assem_, nullptr, nullptr, nullptr, m);
   fprintf(out, "%s:\n", result.data());
 }
 
-void MoveInstr::Print(FILE *out, temp::Map *m) const {
+void MoveInstr::Print(FILE *out, temp::Map *m) const { //数据移动指令（寄存器之间或寄存器和内存之间移动）
   if (!dst_ && !src_) {
     std::size_t srcpos = assem_.find_first_of('%');
     if (srcpos != std::string::npos) {

@@ -5,7 +5,8 @@ namespace tree {
  * Gets rid of the top-level SEQ's, producing a list
  * @param stm current statement
  */
-void StmList::Linear(tree::Stm *stm) {
+void StmList::Linear(tree::Stm *stm) { 
+  //递归剥离语句中的顶层 SeqStm（序列语句），将所有语句拆开存到一个线性列表中。
   if (typeid(*stm) == typeid(tree::SeqStm)) {
     auto seqstm = static_cast<tree::SeqStm *>(stm);
     Linear(seqstm->left_);
@@ -32,6 +33,7 @@ Stm *Stm::Seq(tree::Stm *x, tree::Stm *y) {
 }
 
 bool Stm::Commute(tree::Stm *x, tree::Exp *y) {
+  //判断语句 x 是否和表达式 y 可以“交换顺序”执行而不影响结果
   if (x->IsNop())
     return true;
   if (typeid(*y) == typeid(tree::NameExp) ||
@@ -44,6 +46,8 @@ bool Stm::Commute(tree::Stm *x, tree::Exp *y) {
 namespace {
 
 struct ExpRefList {
+  //构造函数将若干表达式引用放入列表 refs
+
   std::list<std::reference_wrapper<tree::Exp *>> refs;
 
   ExpRefList() = delete;
@@ -103,6 +107,7 @@ ExpRefList *GetCallRlist(tree::Exp *exp) {
 namespace canon {
 
 void Canon::Trace(std::list<tree::Stm *> &stms) {
+  //把一段由基本块（block）组成的汇编中间代码进行线性化处理
   tree::Stm *last = stms.back();
 
   auto lab = dynamic_cast<tree::LabelStm *>(stms.front());
