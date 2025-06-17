@@ -95,16 +95,19 @@ void AssemInstr::Print(FILE *out, temp::Map *map) const {
 temp::TempList *MunchOperand(tree::Exp *e, OperandRole role,
                              std::string &assem, assem::InstrList &list,
                              std::string_view fs) {
+  //将一个表达式e翻译为操作数汇编字符串（如立即数、寄存器、内存地址）并返回其涉及的临时寄存器列表。
   if (auto c = dynamic_cast<const tree::ConstExp *>(e)) {
-    assem = "$" + std::to_string(c->consti_);
-    return new temp::TempList();
+    assem = "$" + std::to_string(c->consti_);//如果是常量直接使用立即数
+    return new temp::TempList();//不适用寄存器
   }
 
   if (auto mem = dynamic_cast<const tree::MemExp *>(e)) {
     tree::Exp *addr = mem->exp_;
-    assem = role == SRC ? "(`s0)" : "(`d0)";
-
+    assem = role == SRC ? "(`s0)" : "(`d0)";//内存
+    //role == SRC 表示这个操作数是作为源操作数（source）被访问的。
     if (auto binop = dynamic_cast<tree::BinopExp *>(addr)) {
+      //在访问内存地址时，如果地址是形如 reg + const 或 const + reg 的加法表达式，
+      //就把这个偏移常数提取出来放入汇编模板的前面，同时返回包含寄存器的临时变量列表。
       tree::Exp *l = binop->left_, *r = binop->right_;
 
       if (auto lc = dynamic_cast<const tree::ConstExp *>(l)) {
@@ -129,6 +132,8 @@ temp::TempList *MunchOperand(tree::Exp *e, OperandRole role,
 } // namespace cg
 
 
+
+//munch在trree当中实现
 namespace tree {
 
 void SeqStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
@@ -171,7 +176,7 @@ void CjumpStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
 
 void MoveStm::Munch(assem::InstrList &instr_list, std::string_view fs) {
   temp::Temp *src = src_->Munch(instr_list, fs); // IR 表达式翻译成目标汇编中的某个寄存器，并把生成的指令加入 instr_list
-
+  //赋值语句，支持内存赋值和寄存器赋值。
   if (typeid(*dst_) == typeid(tree::MemExp)) {
     auto *mem_dst = static_cast<tree::MemExp *>(dst_);
     temp::Temp *addr = mem_dst->exp_->Munch(instr_list, fs);
@@ -216,6 +221,7 @@ temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
     temp::Temp *reg = temp::TempFactory::NewTemp();
     temp::Temp *lhs = left_->Munch(instr_list, fs);
     temp::Temp *rhs = right_->Munch(instr_list, fs);
+    //idivq 只能除 %rax，结果商在 %rax，余数在 %rdx。商在 %rax，最后转移到一个新的临时寄存器返回
 
     instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rax), new temp::TempList(lhs)));
     instr_list.Append(new assem::OperInstr("cqto", new temp::TempList({rax, rdx}), new temp::TempList(rax), nullptr));
@@ -232,6 +238,7 @@ temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 
     instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(rax), new temp::TempList(lhs)));
     instr_list.Append(new assem::OperInstr("imulq `s0", new temp::TempList({rax, rdx}), new temp::TempList({rhs, rax}), nullptr));
+    //imulq src	隐式使用 %rax 作为乘数，结果放 %rax, %rdx（高位）
     instr_list.Append(new assem::MoveInstr("movq `s0, `d0", new temp::TempList(reg), new temp::TempList(rax)));
     return reg;
   }
@@ -261,7 +268,7 @@ temp::Temp *BinopExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 }
 
 temp::Temp *MemExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  // only deal with src is mem
+  // 得到内存地址 exp 只处理 读内存 的情况
   temp::Temp *reg = temp::TempFactory::NewTemp();
   temp::Temp *exp = exp_->Munch(instr_list, fs);
   instr_list.Append(new assem::OperInstr("movq (`s0), `d0",
@@ -271,6 +278,7 @@ temp::Temp *MemExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 }
 
 temp::Temp *TempExp::Munch(assem::InstrList &instr_list, std::string_view frame_offset) {
+  //用 TEMP(fp) 来表示“帧指针”，但其实不真的分配 %rbp 寄存器，而是用 %rsp + offset 替代。
   auto *fp_temp = reg_manager->FramePointer();
   if (temp_ != fp_temp) {
     return temp_;
@@ -291,12 +299,13 @@ temp::Temp *TempExp::Munch(assem::InstrList &instr_list, std::string_view frame_
 
 
 temp::Temp *EseqExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
-  stm_->Munch(instr_list, fs);
-  return exp_->Munch(instr_list, fs);
+  stm_->Munch(instr_list, fs); // 先把副作用的语句翻译成汇编（可能有输出、赋值等）
+  return exp_->Munch(instr_list, fs); // 然后再对表达式部分求值，并返回它的寄存器
 }
 
 temp::Temp *NameExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   /* TODO: Put your lab5 code here */
+  //NameExp 表示的是标签（如函数名、全局变量地址），不是调用，只是“取地址”。
   temp::Temp *dst = temp::TempFactory::NewTemp();
   instr_list.Append(
       new assem::OperInstr("leaq " + name_->Name() + "(%rip), `d0",
@@ -306,7 +315,7 @@ temp::Temp *NameExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
 
 temp::Temp *ConstExp::Munch(assem::InstrList &instr_list, std::string_view fs) {
   temp::Temp *dst = temp::TempFactory::NewTemp();
-  // Imm
+  // 立即数
   instr_list.Append(
       new assem::OperInstr("movq $" + std::to_string(consti_) + ", `d0",
                            new temp::TempList(dst), nullptr, nullptr));
@@ -359,6 +368,7 @@ temp::TempList *ExpList::MunchArgs(assem::InstrList &instr_list, std::string_vie
   const int reg_arg_count = reg_manager->ArgRegs()->GetList().size();
   int idx = 0;
 
+// /idx 在 ExpList::MunchArgs 中的作用是 区分参数该放在哪 ——前六个进寄存器，其余进栈上传。
   for (Exp *arg_exp : exp_list_) {
     temp::Temp *src_temp = arg_exp->Munch(instr_list, frame_offset);
 

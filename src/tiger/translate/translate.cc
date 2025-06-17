@@ -605,8 +605,8 @@ tr::ExpAndTy *AssignExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   } else {
     errormsg->Error(pos_, "unmatched assign exp");
   }
-  tree::MoveStm *stm = new tree::MoveStm(var->exp_->UnEx(), exp->exp_->UnEx());
-  return new tr::ExpAndTy(new tr::NxExp(stm), type::VoidTy::Instance());
+  tree::MoveStm *stm = new tree::MoveStm(var->exp_->UnEx(), exp->exp_->UnEx()); //赋值语句
+  return new tr::ExpAndTy(new tr::NxExp(stm), type::VoidTy::Instance()); //没有返回值的语句 且类型是woid
 }
 
 tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
@@ -634,8 +634,8 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   test_cx.trues_.DoPatch(t);
   test_cx.falses_.DoPatch(f);
 
-  if (!elsee_) {
-    if (!thenTy->IsSameType(type::VoidTy::Instance())) {
+  if (!elsee_) {//没有else
+    if (!thenTy->IsSameType(type::VoidTy::Instance())) {//但是产生了值
       errormsg->Error(then_->pos_, "if-then exp's body must produce no value");
       return new tr::ExpAndTy(tr::getVoidExp(), thenTy);
     }
@@ -647,7 +647,7 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                           new tree::LabelStm(f))));
 
     return new tr::ExpAndTy(new tr::NxExp(stm), thenTy);
-  } else {
+  } else {//有else
     tr::ExpAndTy *else_exp_and_ty =
         elsee_->Translate(venv, tenv, level, label, errormsg);
     type::Ty *elseTy = else_exp_and_ty->ty_;
@@ -655,7 +655,7 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       errormsg->Error(pos_, "then exp and else exp type mismatch");
       return new tr::ExpAndTy(tr::getVoidExp(), thenTy);
     }
-
+    //构建跳转
     tree::SeqStm *true_stm = new tree::SeqStm(
         new tree::LabelStm(t),
         new tree::SeqStm(
@@ -663,6 +663,7 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                               then_exp_and_ty->exp_->UnEx()),
             new tree::JumpStm(new tree::NameExp(joint),
                               new std::vector<temp::Label *>{joint})));
+                              //当条件成立时，就跳转到标签 t，计算 then 分支的值，并跳到 joint 汇合点。
 
     tree::SeqStm *false_stm = new tree::SeqStm(
         new tree::LabelStm(f),
@@ -677,8 +678,8 @@ tr::ExpAndTy *IfExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
             test_cx.stm_,
             new tree::SeqStm(
                 true_stm,
-                new tree::SeqStm(false_stm, new tree::LabelStm(joint)))),
-        new tree::TempExp(r));
+                new tree::SeqStm(false_stm, new tree::LabelStm(joint)))),//顺序拼起
+        new tree::TempExp(r)); //所有 then 和 else 的计算结果都存进这个临时寄存器 r，最后表达式就等价于读取 r。
     return new tr::ExpAndTy(new tr::ExExp(exp), thenTy);
   }
 }
@@ -687,7 +688,7 @@ tr::ExpAndTy *WhileExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *label,
                                   err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab5 code here */
-
+  //Tiger 语言中，while 语句的语义决定它不引入新的作用域
   temp::Label *doneLabel = temp::LabelFactory::NewLabel();
 
   tr::ExpAndTy *test_exp_and_ty =
@@ -717,13 +718,13 @@ tr::ExpAndTy *WhileExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
       new tree::SeqStm(
           test_cx.stm_,
           new tree::SeqStm(
-              new tree::LabelStm(bodyLabel),
+              new tree::LabelStm(bodyLabel), //满足条件后进入循环体
               new tree::SeqStm(
-                  body_exp_and_ty->exp_->UnNx(),
+                  body_exp_and_ty->exp_->UnNx(), //循环体代码
                   new tree::SeqStm(
                       new tree::JumpStm(
                           new tree::NameExp(testLabel),
-                          new std::vector<temp::Label *>{testLabel}),
+                          new std::vector<temp::Label *>{testLabel}), //跳回 testLabel 重新判断
                       new tree::LabelStm(doneLabel))))));
 
   return new tr::ExpAndTy(new tr::NxExp(seq_stm), type::VoidTy::Instance());
@@ -765,19 +766,19 @@ tr::ExpAndTy *ForExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   temp::Temp *loop_i =
       (static_cast<frame::InRegAccess *>(loop_i_entry->access_->access_))->reg;
 
-  // init i with lo_
+  // 初始化语句
   auto loop_i_init_stmt =
       new tree::MoveStm(new tree::TempExp(loop_i), lo_exp_and_ty->exp_->UnEx());
   // init limit with hi_
   auto limit_init_stmt =
       new tree::MoveStm(new tree::TempExp(limit), hi_exp_and_ty->exp_->UnEx());
 
-  // if i > limit goto done
+  // if i > limit 直接结束循环
   auto i_gt_limit_cjump_stmt =
       new tree::CjumpStm(tree::RelOp::GT_OP, new tree::TempExp(loop_i),
                          new tree::TempExp(limit), done_label, body_label);
 
-  // if i == limit goto done
+  // if i == limit 直接结束循环
   auto i_eq_limit_cjump_stmt =
       new tree::CjumpStm(tree::RelOp::EQ_OP, new tree::TempExp(loop_i),
                          new tree::TempExp(limit), done_label, inc_label);
@@ -795,15 +796,15 @@ tr::ExpAndTy *ForExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
           new tree::SeqStm(
               i_gt_limit_cjump_stmt,
               new tree::SeqStm(
-                  new tree::LabelStm(body_label),
+                  new tree::LabelStm(body_label), // 循环体开始 + 
                   new tree::SeqStm(
-                      body_exp_and_ty->exp_->UnNx(),
+                       body_exp_and_ty->exp_->UnNx(), //执行用户提供的 body 代码
                       new tree::SeqStm(
                           i_eq_limit_cjump_stmt,
                           new tree::SeqStm(
                               new tree::LabelStm(inc_label),
                               new tree::SeqStm(
-                                  loop_i_increase_stmt,
+                                  loop_i_increase_stmt,//增量
                                   new tree::SeqStm(
                                       new tree::JumpStm(
                                           new tree::NameExp(body_label),
@@ -820,12 +821,21 @@ tr::ExpAndTy *BreakExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                   tr::Level *level, temp::Label *label,
                                   err::ErrorMsg *errormsg) const {
   /* TODO: Put your lab5 code here */
-  // A break statement simply jump to label
   tree::JumpStm *jump_stm = new tree::JumpStm(
       new tree::NameExp(label), new std::vector<temp::Label *>{label});
   return new tr::ExpAndTy(new tr::NxExp(jump_stm), type::VoidTy::Instance());
 }
 
+
+/*
+在一个新的作用域中执行 decs（定义变量、类型、函数等）；
+
+然后执行 body 表达式；
+
+并返回 body 的值；
+
+离开 let 后，decs 中定义的绑定失效（即作用域结束）；
+*/
 tr::ExpAndTy *LetExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
                                 tr::Level *level, temp::Label *label,
                                 err::ErrorMsg *errormsg) const {
@@ -833,6 +843,7 @@ tr::ExpAndTy *LetExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
   venv->BeginScope();
   tenv->BeginScope();
   tree::Stm *dec_list_stm = nullptr;
+  //将 let 表达式中的所有声明（decs）翻译成一串顺序执行的 tree::Stm 指令（SeqStm 链），用于后续构造 EseqExp。
   for (Dec *dec : decs_->GetList()) {
     tree::Stm *dec_stm =
         dec->Translate(venv, tenv, level, label, errormsg)->UnNx();
@@ -900,7 +911,7 @@ tr::ExpAndTy *ArrayExp::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     // The result of the whole expression is r
     tree::EseqExp *exp = new tree::EseqExp(
         new tree::MoveStm(new tree::TempExp(r),
-                          frame::ExternalCall("init_array", args)),
+                          frame::ExternalCall("init_array", args)),//runtime.c
         new tree::TempExp(r));
     return new tr::ExpAndTy(new tr::ExExp(exp), type->ActualTy());
   } else {
@@ -986,7 +997,7 @@ tr::Exp *FunctionDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
 
     venv->EndScope();
 
-    // Calls procEntryExit1 to remember a ProcFrag
+    // 打包成一个 ProcFrag 放入 frags
     frags->PushBack(new frame::ProcFrag(
         frame::ProcEntryExit1(
             function_level->frame_,
@@ -1023,7 +1034,7 @@ tr::Exp *VarDec::Translate(env::VEnvPtr venv, env::TEnvPtr tenv,
     tr::Access *access = tr::Access::AllocLocal(level, escape_);
     venv->Enter(var_, new env::VarEntry(access, type_id));
     return new tr::NxExp(new tree::MoveStm(
-        access->access_->ToExp(new tree::TempExp(reg_manager->FramePointer())),
+        access->access_->ToExp(new tree::TempExp(reg_manager->FramePointer())),//两次才能找到计算
         init_exp_and_ty->exp_->UnEx()));
   } else {
     // var x := exp
@@ -1112,6 +1123,7 @@ type::Ty *RecordTy::Translate(env::TEnvPtr tenv,
 }
 
 type::Ty *ArrayTy::Translate(env::TEnvPtr tenv, err::ErrorMsg *errormsg) const {
+  //类型检查阶段解析用户写的数组类型标识符，得到实际的元素类型，构造出数组类型的抽象表示。
   /* TODO: Put your lab5 code here */
   type::Ty *type = tenv->Look(array_);
   if (!type) {

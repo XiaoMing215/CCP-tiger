@@ -18,7 +18,7 @@ void RegAllocator::RegAlloc() {
   LivenessAnalysis();
   Build();
   MakeWorklist();
-  do {
+  do {//一次处理一个 处理多次
     if (!simplify_worklist->GetList().empty())
       Simplify();
     else if (!worklist_moves->GetList().empty())
@@ -32,11 +32,11 @@ void RegAllocator::RegAlloc() {
              freeze_worklist->GetList().empty() &&
              spill_worklist->GetList().empty()));
 
-  auto color_assign_result = AssignColor();
+  auto color_assign_result = AssignColor(); //在简化栈中逆序弹出节点，尝试给节点分配寄存器（颜色）
 
   if (!spilled_nodes->GetList().empty()) {
     RewriteProgram();
-    RegAlloc();
+    RegAlloc();//再次调用自己
   } else {
     result_ = std::make_unique<Result>(
         color_assign_result.coloring,
@@ -72,7 +72,7 @@ assem::InstrList *RegAllocator::RemoveRedundantMove(temp::Map *coloring) {
 }
 
 
-void RegAllocator::LivenessAnalysis() {
+void RegAllocator::LivenessAnalysis() { //构建控制流图 + 活跃变量分析 + 干涉图建立
   fg::FlowGraphFactory flow_graph_factory(assem_instr_);
   flow_graph_factory.AssemFlowGraph();
 
@@ -84,12 +84,12 @@ void RegAllocator::LivenessAnalysis() {
   moves = live_graph.moves;
   temp_node_map = live_graph_factory.GetTempNodeMap();
 
-  worklist_moves = moves;
+  worklist_moves = moves;//将所有 move 指令拷贝进 worklist_moves 之后 coalesce 阶段会逐个处理它们（尝试将 move 的源和目的节点合并）
 }
 
 
 
-void RegAllocator::Build() {
+void RegAllocator::Build() { //初始化每个节点的属性：度数、相关 move 指令、是否预着色、别名等，
   ClearAndInit();
 
   auto temp_map = reg_manager->temp_map_;
@@ -130,6 +130,12 @@ void RegAllocator::AddEdge(live::INodePtr u, live::INodePtr v) {
 
 
 void RegAllocator::MakeWorklist() {
+  /*
+  从 initial 中取出所有临时变量（未预着色的），根据 degree 和是否参与 move 指令来分类：
+  simplify_worklist：安全简化的变量（度数 < K，且不参与 move）
+  freeze_worklist：参与 move，但度数 < K，不太可能溢出
+  spill_worklist：度数 ≥ K，有可能溢出
+  */
   for (auto &node : initial->GetList()) {
     int deg = *degree->Look(node);
     if (deg >= K) {
@@ -211,9 +217,10 @@ void RegAllocator::Coalesce() {
   worklist_moves->Delete(move.first, move.second);
 
   auto u = GetAlias(move.first);
-  auto v = GetAlias(move.second);
+  auto v = GetAlias(move.second);//合并后维护别名
+  //当 u 和 v 是同一个节点时，说明它们本质上代表的是同一个变量或临时寄存器，没有实际的寄存器转移（move）需要做了，这条 move 指令可以直接删掉。
 
-  if (precolored->Contain(v)) std::swap(u, v);
+  if (precolored->Contain(v)) std::swap(u, v);//确保 v 是普通节点
 
   auto IsSameNode = [](auto a, auto b) { return a == b; };
 
@@ -246,26 +253,26 @@ void RegAllocator::Coalesce() {
     active_moves->Union(x, y);
   };
 
-  if (IsSameNode(u, v)) {
+  if (IsSameNode(u, v)) { //是同一个代表可以删掉这个 move 指令
     MarkCoalesced(u, v);
     AddWorkList(u);
-  } else if (IsConstrained(u, v)) {
+  } else if (IsConstrained(u, v)) {// u 和 v 直接有干涉边
     MarkConstrained(u, v);
     AddWorkList(u);
     AddWorkList(v);
-  } else if (CanCoalesce(u, v)) {
+  } else if (CanCoalesce(u, v)) {//启发式判断
     MarkCoalesced(u, v);
     Combine(u, v);
     AddWorkList(u);
   } else {
-    MarkActive(u, v);
+    MarkActive(u, v);//放到 active_moves，等以后重试
   }
 }
 
 
 
 
-void RegAllocator::AddWorkList(live::INodePtr u) {
+void RegAllocator::AddWorkList(live::INodePtr u) {//如果 u 不再被 freeze、也没有被 spill，重新把 u 放回可处理列表中（用于后续简化）
   if (!precolored->Contain(u) && !MoveRelated(u) && (*(degree->Look(u)) < K)) {
     freeze_worklist->DeleteNode(u);
     simplify_worklist->Union(u);
@@ -286,7 +293,7 @@ bool RegAllocator::Conservative(live::INodeListPtr nodes) {
   return (k < K);
 }
 
-live::INodePtr RegAllocator::GetAlias(live::INodePtr n) {
+live::INodePtr RegAllocator::GetAlias(live::INodePtr n) {//GetAlias(x)：如果 x 被合并到另一个节点了，返回它的代表节点
   if (coalesced_nodes->Contain(n))
     return GetAlias(alias->Look(n));
   else
@@ -387,7 +394,7 @@ void RegAllocator::SelectSpill() {
   FreezeMoves(u);
 }
 
-col::Result RegAllocator::AssignColor() {
+col::Result RegAllocator::AssignColor() {//给图中的每个节点（变量）分配寄存器颜色。
   col::Color color;
 
   while (!select_stack->GetList().empty()) {
@@ -396,14 +403,14 @@ col::Result RegAllocator::AssignColor() {
 
     color.InitOkColors();
 
-    for (auto w : n->Succ()->GetList()) {
+    for (auto w : n->Succ()->GetList()) {//排除邻居已用颜色
       auto alias_w = GetAlias(w);
       if ((colored_nodes->Union(precolored))->Contain(alias_w)) {
         color.RemoveOkColor(alias_w);
       }
     }
 
-    if (color.OkColorsEmpty()) {
+    if (color.OkColorsEmpty()) {//检查是否有颜色可用
       spilled_nodes->Union(n);
     } else {
       colored_nodes->Union(n);
@@ -411,7 +418,7 @@ col::Result RegAllocator::AssignColor() {
     }
   }
 
-  for (live::INodePtr n : coalesced_nodes->GetList()) {
+  for (live::INodePtr n : coalesced_nodes->GetList()) { //处理合并节点的颜色分配
     color.AssignSameColor(GetAlias(n), n);
   }
 
@@ -453,14 +460,14 @@ void RegAllocator::RewriteProgram() {
 
     auto new_instr_list = new assem::InstrList();
 
-    for (auto instr_it = assem_instr_->GetList().begin(); 
+    for (auto instr_it = assem_instr_->GetList().begin(); //遍历所有汇编指令，对其进行替换
          instr_it != assem_instr_->GetList().end(); ++instr_it) {
       assem::Instr* instr = *instr_it;
       assert(!precolored->Contain(v));
 
       instr->ReplaceTemp(old_temp, vi);
 
-      if (instr->Use()->Contain(vi)) {
+      if (instr->Use()->Contain(vi)) {//如果用到了 vi，则插入 fetch 指令（load）
         new_instr_list->Append(makeFetchInstr(offset, vi));
       }
 
@@ -488,8 +495,8 @@ void RegAllocator::RewriteProgram() {
 
 void RegAllocator::Init() {
   precolored = new live::INodeList();
-  simplify_worklist = new live::INodeList();
-  freeze_worklist = new live::INodeList();
+  simplify_worklist = new live::INodeList(); //存放当前度数（邻接边数）小于 K（寄存器数），且不参与 move 的节点。
+  freeze_worklist = new live::INodeList(); //度数小于 K（寄存器数），但参与 move 指令的节点。
   spill_worklist = new live::INodeList();
   spilled_nodes = new live::INodeList();
   initial = new live::INodeList();

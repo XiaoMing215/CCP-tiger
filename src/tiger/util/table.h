@@ -3,7 +3,16 @@
 
 #include <cassert>
 #include <functional>
+//符号表（Symbol Table）
+/*
+在编译器中，尤其是后端（中间代码生成、寄存器分配）过程中，我们会频繁地：
 
+把一个临时变量 Temp* 映射到它最终使用的机器寄存器名 Temp*。
+
+把一个变量名 Symbol* 映射到它的逃逸信息（bool*）。
+
+把一个临时变量 Temp* 映射到它的生存区间、使用次数、分配成本等等。
+*/
 namespace tab {
 template <typename KeyType, typename ValueType> class Table {
 public:

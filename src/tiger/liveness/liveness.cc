@@ -1,5 +1,12 @@
 #include "tiger/liveness/liveness.h"
 
+/*
+活跃变量分析（Liveness Analysis）：计算每条指令前后的“活跃寄存器集合”，即哪些变量在该点之后还会被使用。
+
+构建干涉图（Interference Graph）：基于活跃信息，建立变量之间的冲突（干涉）关系，表示哪些变量不能共用同一个寄存器。
+
+
+*/
 extern frame::RegManager *reg_manager;
 
 namespace live {
@@ -67,7 +74,7 @@ temp::TempList *ToTempList(const std::set<temp::Temp *> &origin) {
   return res;
 }
 
-
+//LiveMap 是对 整个函数/基本块列表 做的
 void LiveGraphFactory::LiveMap() {
   // 初始化每个节点的 in 和 out 集合为空
   for (fg::FNodePtr node : flowgraph_->Nodes()->GetList()) {
@@ -106,6 +113,7 @@ void LiveGraphFactory::LiveMap() {
       std::set<temp::Temp *> old_out_set = ToSet(out_->Look(node)->GetList());
 
       // 如果 in 或 out 有变化，更新并标记继续迭代
+      //循环结构在CFG中表现为有向环，分析过程中通过多次迭代不断传播变量活跃信息，直到所有节点的 in 和 out 集合稳定不再变化。
       if (!SameSet(new_in_set, old_in_set) || !SameSet(new_out_set, old_out_set)) {
         changed = true;
         in_->Set(node, ToTempList(new_in_set));
@@ -125,7 +133,7 @@ void LiveGraphFactory::InterfGraph() {
     INodePtr node = live_graph_.interf_graph->NewNode(precolored_temp);
     temp_node_map_->Enter(precolored_temp, node);
   }
-  // 在所有预着色寄存器之间添加边
+  // 在所有预着色寄存器之间添加边 真实的物理储存器
   for (temp::Temp *temp1 : precolored_temps) {
     for (temp::Temp *temp2 : precolored_temps) {
       if (temp1 != temp2) {
@@ -165,6 +173,7 @@ void LiveGraphFactory::InterfGraph() {
 
     if (typeid(*instr) == typeid(assem::MoveInstr)) {
       // 如果是move指令 a ← c，添加 (a, b1), ..., (a, bj)，其中 bj != c
+      //如果编译器在图着色时把 a 和 c 分配到同一个寄存器，那么这条 move 指令可以 完全删除（被 coalesce）
       for (auto def : instr->Def()->GetList()) {
         INodePtr def_node = temp_node_map_->Look(def);
         auto out_set = ToSet(out_->Look(node)->GetList());
@@ -179,7 +188,7 @@ void LiveGraphFactory::InterfGraph() {
           live_graph_.interf_graph->AddEdge(b_node, def_node);
         }
 
-        // move指令将对应节点加入moves集合
+        // move指令将对应节点加入moves集合 为了后续寄存器分配时做 合并判断
         for (temp::Temp *use : instr->Use()->GetList()) {
           INodePtr use_node = temp_node_map_->Look(use);
           live_graph_.moves->Append(use_node, def_node);
